@@ -22,3 +22,8 @@ do umount after kill go process
 ```shell
 $ umount /tmp/myown-filesystem
 ```
+
+if you want to confirm what filesystem are mounted, you run following command
+```shell
+$ mount
+```
