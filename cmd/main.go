@@ -8,13 +8,11 @@ import (
 	awsv2cfg "github.com/aws/aws-sdk-go-v2/config"
 	s3v2 "github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/hanwen/go-fuse/v2/fs"
-	"gocloud.dev/blob"
-	"gocloud.dev/blob/s3blob"
 	"log"
 	"myown-filesystem/internal"
 )
 
-func connectProvider(provider string, env string, bucketName string) (*blob.Bucket, error) {
+func connectProvider(provider string, env string, bucketName string) (internal.ClientBase, error) {
 	ctx := context.Background()
 
 	endpoint := aws.EndpointResolverWithOptionsFunc(func(service, region string, options ...interface{}) (aws.Endpoint, error) {
@@ -45,12 +43,11 @@ func connectProvider(provider string, env string, bucketName string) (*blob.Buck
 			options.UsePathStyle = true
 		}
 	})
-	bucket, err := s3blob.OpenBucketV2(ctx, clientV2, bucketName, nil)
-	if err != nil {
-		return nil, err
-	}
 
-	return bucket, nil
+	return internal.S3Client{
+		Client:     clientV2,
+		BucketName: bucketName,
+	}, nil
 }
 
 // myown -mountdir /tmp/myown-filesystem -provider aws -env local -bucket my-bucket
@@ -71,24 +68,16 @@ func main() {
 		log.Fatal("provider flag is required")
 	}
 
-	bucket, err := connectProvider(*provider, *env, *bucketName)
-	defer bucket.Close()
+	client, err := connectProvider(*provider, *env, *bucketName)
 	if err != nil {
 		log.Println(err)
 		log.Fatal("fatal connect provider")
 	}
 	fmt.Println("connected to target provider")
 
-	b, _ := bucket.Exists(context.Background(), "child2/")
-	fmt.Println(b)
-	//fmt.Println(e.Error())
-
-	c, _ := bucket.Exists(context.Background(), "child1.txt")
-	fmt.Println(c)
-
 	opts := &fs.Options{}
 	// ルートディレクトリにマウントしている
-	server, err := fs.Mount(*mountDir, &internal.Root{Bucket: bucket}, opts)
+	server, err := fs.Mount(*mountDir, &internal.Root{Client: client}, opts)
 	if err != nil {
 		log.Fatal("fatal mount")
 	}
