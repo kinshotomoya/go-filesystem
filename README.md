@@ -27,3 +27,9 @@ if you want to confirm what filesystem are mounted, you run following command
 ```shell
 $ mount
 ```
+
+
+ ## how to use
+install FUSE into your PC
+https://osxfuse.github.io/2024/04/05/macFUSE-4.7.0.html
+
