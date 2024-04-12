@@ -28,8 +28,31 @@ if you want to confirm what filesystem are mounted, you run following command
 $ mount
 ```
 
+### set up local test data
+
+create bucket
+```shell
+$ aws --endpoint-url=http://localhost:4566 s3 mb s3://my-bucket
+```
+
+confirm the inside of the bucket 
+```shell
+$ aws --endpoint-url=http://localhost:4566 s3 ls s3://my-bucket
+```
+
+copy test-data directory to localstack
+```shell
+$ aws --endpoint-url=http://localhost:4566 s3 cp --recursive test-data s3://my-bucket/
+```
+
+go run
+```shell
+$ go run cmd/main.go -mountdir /tmp/myown-filesystem -provider aws -env local -bucket my-bucket
+```
 
  ## how to use
 install FUSE into your PC
 https://osxfuse.github.io/2024/04/05/macFUSE-4.7.0.html
+
+
 

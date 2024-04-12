@@ -2,140 +2,98 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awsv2cfg "github.com/aws/aws-sdk-go-v2/config"
+	s3v2 "github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/hanwen/go-fuse/v2/fs"
-	"github.com/hanwen/go-fuse/v2/fuse"
+	"gocloud.dev/blob"
+	"gocloud.dev/blob/s3blob"
 	"log"
-	"syscall"
+	"myown-filesystem/internal"
 )
 
-type HelloRoot struct {
-	fs.Inode
-}
-type Directory struct {
-	fs.Inode
+func connectProvider(provider string, env string, bucketName string) (*blob.Bucket, error) {
+	ctx := context.Background()
 
-	name string
-}
-
-// マウント時に呼ばれる
-// 初期化に必要な場合に実装する
-//func (r *HelloRoot) OnAdd(ctx context.Context) {
-//	fmt.Println("adddd")
-//	ch := r.NewPersistentInode(
-//		ctx, &fs.MemRegularFile{
-//			Data: []byte("file.txt"),
-//			Attr: fuse.Attr{
-//				Mode: 0644,
-//			},
-//		}, fs.StableAttr{Ino: 2})
-//	r.AddChild("files.txt", ch, true)
-//
-//}
-
-// TODO: ここで指定したデータとlookupなどの各メソッドで定義した情報どちらが使われるのか調べる
-func (r *HelloRoot) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
-	out.Mode = 0755
-	return 0
-}
-
-func (r *HelloRoot) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
-	fmt.Println(name)
-	// TODO: readdirの後に、ファイルやディレクトリそれぞれで呼ばれる
-	//  それぞれ個々の処理が来たら、localstackにnameで検索かけに行き、ファイルならファイルのフラグで返す
-	//  ディレクトリならディレクトリのフラグで処理を返してあげる
-	//  以下は例として仮想的なファイルとディレクトリを返している
-
-	// ファイルの場合
-	if name == "hoge.txt" {
-		chile := r.NewInode(ctx, &fs.MemRegularFile{
-			Data: []byte("hogeeee"),
-			Attr: fuse.Attr{
-				Mode: 0444,
-			},
-		}, fs.StableAttr{Mode: syscall.S_IFREG})
-
-		out.Mode = 0444
-		out.Size = 1
-		return chile, 0
-		// ディレクトリの場合
-	} else if name == "hoge" {
-		chile := r.NewInode(ctx, &Directory{name: "hoge"}, fs.StableAttr{Mode: syscall.S_IFDIR})
-
-		// ディレクトリであるフラグとファイルパーミッションをORでビット演算している
-		out.Mode = syscall.S_IFDIR | 0755
-		return chile, 0
-	}
-
-	return nil, syscall.ENOENT
-}
-
-func (r *HelloRoot) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
-	// TODO: ここでは、localstackのルートディレクトリ配下のファイル、ディレクトリを返す
-	//  以下は例として仮想的なファイルとディレクトリを返している
-	fmt.Println("readdir")
-	entry := []fuse.DirEntry{
-		{
-			Mode: syscall.S_IFREG,
-			Name: "hoge.txt",
-		},
-		{
-			Mode: syscall.S_IFDIR,
-			Name: "hoge",
-		},
-	}
-	return fs.NewListDirStream(entry), 0
-}
-
-func (d *Directory) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
-	if name == "children.txt" {
-		chile := d.NewInode(ctx, &fs.MemRegularFile{
-			Data: []byte("childrennnnn"),
-			Attr: fuse.Attr{
-				Mode: 0444,
-			},
-		}, fs.StableAttr{Mode: syscall.S_IFREG})
-
-		out.Mode = 0444
-		out.Size = 1
-		return chile, 0
-	}
-
-	return nil, syscall.ENOENT
-}
-
-func (d *Directory) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
-	// TODO: Directoryが保持しているnameでlocalstackを検索してあげる
-	//  以下は例として明示的にディレクトリ名とファイル名を指定している
-	if d.name == "hoge" {
-		entry := []fuse.DirEntry{
-			{
-				Mode: syscall.S_IFREG,
-				Name: "children.txt",
-			},
+	endpoint := aws.EndpointResolverWithOptionsFunc(func(service, region string, options ...interface{}) (aws.Endpoint, error) {
+		if env == "local" {
+			return aws.Endpoint{
+				URL:           "http://localhost:4566",
+				SigningRegion: "ap-northeast-1",
+			}, nil
+		} else {
+			return aws.Endpoint{}, nil
 		}
-		return fs.NewListDirStream(entry), 0
+	})
+
+	cfg, err := awsv2cfg.LoadDefaultConfig(
+		ctx,
+		awsv2cfg.WithRegion("ap-northeast-1"),
+		awsv2cfg.WithEndpointResolverWithOptions(endpoint),
+		// TODO: local以外の場合は指定されたprofileを利用
+		//awsv2cfg.WithSharedConfigProfile()
+	)
+	if err != nil {
+		return nil, err
 	}
-	return nil, syscall.ENOENT
+
+	clientV2 := s3v2.NewFromConfig(cfg, func(options *s3v2.Options) {
+		// trueにしないと、localの場合にhttp://my-bucket.localhost:4566とアドレスがなってしまう
+		if env == "local" {
+			options.UsePathStyle = true
+		}
+	})
+	bucket, err := s3blob.OpenBucketV2(ctx, clientV2, bucketName, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return bucket, nil
 }
 
-// これは型アサーションをすることでinterfaceの実装ミスをコンパイル時に防ぐために定義している
-// 以下詳細：
-// (*HelloRoot)(nil)でHelloRoot型のnilポインタを返す
-// (fs.NodeGetattrer)((*HelloRoot)(nil))で↑で作成したHelloRoot型のnilポインタをfs.NodeGetattrer型に型アサーションしようとしている
-// こうすることで、HelloRoot構造体が、fs.NodeGetattrer interfaceを実装していない場合にコンパイルエラーが発生するので、コンパイル時に実装ミスに気づける
-var _ = (fs.NodeGetattrer)((*HelloRoot)(nil))
-var _ = (fs.NodeReaddirer)((*HelloRoot)(nil))
-var _ = (fs.NodeLookuper)((*HelloRoot)(nil))
-
+// myown -mountdir /tmp/myown-filesystem -provider aws -env local -bucket my-bucket
 func main() {
 	// fs.api.goに定義されているそれぞれのinterfaceを実装することで、ファイルシステムに対するシステムコールをハンドリングできるようになる
 	// 例えば、Readdirメソッドを実装すると、lsコマンドで発行されるシステムコールをgoプロセス内でハンドリングできる
+	mountDir := flag.String("mountdir", "/tmp/myown-filesystem", "mount directory")
+	provider := flag.String("provider", "aws", "cloud provider aws, gcp, azure")
+	env := flag.String("env", "local", "environment")
+	bucketName := flag.String("bucket", "default-bucket", "bucket name")
+	flag.Parse()
+
+	if mountDir == nil {
+		log.Fatal("mountdir flag is required")
+	}
+
+	if provider == nil {
+		log.Fatal("provider flag is required")
+	}
+
+	bucket, err := connectProvider(*provider, *env, *bucketName)
+	defer bucket.Close()
+	if err != nil {
+		log.Println(err)
+		log.Fatal("fatal connect provider")
+	}
+	fmt.Println("connected to target provider")
+
+	b, _ := bucket.Exists(context.Background(), "child2/")
+	fmt.Println(b)
+	//fmt.Println(e.Error())
+
+	c, _ := bucket.Exists(context.Background(), "child1.txt")
+	fmt.Println(c)
+
 	opts := &fs.Options{}
 	// ルートディレクトリにマウントしている
-	server, err := fs.Mount("/tmp/myown-filesystem", &HelloRoot{}, opts)
+	server, err := fs.Mount(*mountDir, &internal.Root{Bucket: bucket}, opts)
 	if err != nil {
 		log.Fatal("fatal mount")
 	}
+	fmt.Println("mounted to target directory")
 	server.Wait()
+	// TODO: シグナルハンドリング
+	server.Unmount()
 }
