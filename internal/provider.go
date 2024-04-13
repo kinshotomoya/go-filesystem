@@ -4,16 +4,23 @@ import (
 	"context"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	s3v2 "github.com/aws/aws-sdk-go-v2/service/s3"
+	"io"
 )
 
 type ClientBase interface {
 	List(ctx context.Context, key string) ([]string, error)
+	GetObject(ctx context.Context, key string) (*Object, error)
 	Close()
 }
 
 type S3Client struct {
 	Client     *s3v2.Client
 	BucketName string
+}
+
+type Object struct {
+	Body              io.Reader
+	ContentLengthByte int64
 }
 
 func (receiver S3Client) List(ctx context.Context, key string) ([]string, error) {
@@ -32,6 +39,26 @@ func (receiver S3Client) List(ctx context.Context, key string) ([]string, error)
 	}
 
 	return entries, nil
+
+}
+
+func (receiver S3Client) GetObject(ctx context.Context, key string) (*Object, error) {
+	object, err := receiver.Client.GetObject(ctx, &s3v2.GetObjectInput{
+		Bucket: aws.String(receiver.BucketName),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var contentLengthByte int64
+	if object.ContentLength != nil {
+		contentLengthByte = *object.ContentLength
+	}
+	return &Object{
+		Body:              object.Body,
+		ContentLengthByte: contentLengthByte,
+	}, nil
 
 }
 

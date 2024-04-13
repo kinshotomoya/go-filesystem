@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
+	"io"
 	"strings"
 	"syscall"
 )
@@ -48,16 +49,27 @@ func (r *Root) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs
 		out.Mode = syscall.S_IFDIR | 0755
 		return chile, 0
 	} else {
-		// TODO: getObjectメソッドでファイルの中身を取得する
+		// ファイルの場合
+		object, err := r.Client.GetObject(ctx, name)
+		if err != nil {
+			return nil, 0
+		}
+
+		body, err := io.ReadAll(object.Body)
+		if err != nil {
+			return nil, 0
+		}
+
 		chile := r.NewInode(ctx, &fs.MemRegularFile{
-			Data: []byte("hogeeee"),
+			Data: body,
 			Attr: fuse.Attr{
+				// TODO: 権限は読み込み書き込み専用でいいか
 				Mode: 0444,
 			},
 		}, fs.StableAttr{Mode: syscall.S_IFREG})
 
 		out.Mode = 0444
-		out.Size = 1
+		out.Size = uint64(object.ContentLengthByte)
 		return chile, 0
 	}
 
