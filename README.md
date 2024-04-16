@@ -8,12 +8,17 @@ you can access to cloud file storage such as aws s3, gcp gcs, azure blob
 as if you ran linux command like `ls` `touch`
 
 ## TODO:
-- [ ] sample code (access memory file directory)
-- [ ] docker set up
-- [ ] fix code to access localstack
-- [ ] fix code to run other linux command `rm` `touch` `mv` `tree`
+- [x] sample code (access memory file directory)
+- [x] docker set up
+- [x] fix code to access localstack
+- [x] fix code to run ls linux command
+- [ ] fix code to run other linux command `touch`
+- [ ] fix code to run other linux command `rm`
+- [ ] fix code to run other linux command `mv`
+- [ ] fix code to run other linux command `tree`
 - [ ] fix code to access not only localstack but also other cloud storage
 - [ ] fix code to umount directory when kill go process 
+- [ ] go cli
 
 
 ## how to develop in local

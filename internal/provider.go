@@ -8,7 +8,7 @@ import (
 )
 
 type ClientBase interface {
-	List(ctx context.Context, key string, delimiter string) ([]string, error)
+	List(ctx context.Context, key string) ([]string, error)
 	GetObject(ctx context.Context, key string) (*Object, error)
 	IsDirectory(ctx context.Context, key string) (bool, error)
 	Close()
@@ -24,11 +24,10 @@ type Object struct {
 	ContentLengthByte int64
 }
 
-func (receiver S3Client) List(ctx context.Context, key string, delimiter string) ([]string, error) {
+func (receiver S3Client) List(ctx context.Context, key string) ([]string, error) {
 	resp, err := receiver.Client.ListObjectsV2(ctx, &s3v2.ListObjectsV2Input{
-		Bucket:    aws.String(receiver.BucketName),
-		Prefix:    aws.String(key),
-		Delimiter: aws.String(delimiter),
+		Bucket: aws.String(receiver.BucketName),
+		Prefix: aws.String(key),
 	})
 
 	if err != nil {

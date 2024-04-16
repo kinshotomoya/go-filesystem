@@ -2,7 +2,6 @@ package internal
 
 import (
 	"context"
-	"fmt"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 	"io"
@@ -35,18 +34,16 @@ func (r *Root) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut)
 func (r *Root) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
 	path := r.Path(r.Root())
 	var key string
-	if path != "" {
+	if !r.IsRoot() {
 		key = path + "/" + name
 	} else {
 		key = name
 	}
-	fmt.Println(path, name, key)
 	isDirectory, err := r.Client.IsDirectory(ctx, key)
 	if err != nil {
 		return nil, syscall.ENOENT
 	}
 	if isDirectory {
-		// ディレクトリの場合
 		chile := r.NewInode(ctx, &Root{name: name, Client: r.Client}, fs.StableAttr{Mode: syscall.S_IFDIR})
 
 		// ディレクトリであるフラグとファイルパーミッションをORでビット演算している
@@ -79,25 +76,19 @@ func (r *Root) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs
 }
 
 func (r *Root) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
-	entry := make([]fuse.DirEntry, 0)
 	path := r.Path(r.Root())
-	var key string
 	if !r.IsRoot() {
-		if path != "" {
-			key = path + "/"
-		} else {
-			key = path
-		}
+		path = path + "/"
 	}
 
-	iter, err := r.Client.List(ctx, key, "")
+	iter, err := r.Client.List(ctx, path)
 	if err != nil {
 		return nil, syscall.ENOENT
 	}
 
 	hashset := make(map[string]struct{})
+	entry := make([]fuse.DirEntry, 0)
 	for i := range iter {
-		fmt.Println("read", key, iter[i])
 		if r.IsRoot() {
 			s := strings.Split(iter[i], "/")
 			key := s[0]
@@ -119,9 +110,11 @@ func (r *Root) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 				}
 			}
 		} else {
+			// child2/child4ディレクトリでls打った場合
 			// key = child2/child4/
 			// child2/child4/grandchild3.txt
 
+			// child2ディレクトリでls打った場合
 			// key = child2/
 			// child2/child4/grandchild3.txt
 			// child2/grandchild1.txt
@@ -130,7 +123,7 @@ func (r *Root) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 
 			// child4/grandchild3.txt
 			// grandchild1.txt
-			trimedPath := strings.TrimPrefix(fullPath, key)
+			trimedPath := strings.TrimPrefix(fullPath, path)
 			// [grandchild3.txt]
 
 			// [child4, grandchild3.txt]
