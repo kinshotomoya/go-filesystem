@@ -37,13 +37,14 @@ func (r *Root) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut)
 }
 
 func (r *Root) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
-	fmt.Println(name)
-	// 続き
-	// TODO: listObjectメソッドを叩いて、nameがディレクトリかどうかを判断する
-	//  keyCountが1以上の場合はディレクトリである
-	if strings.Contains(name, "/dir") {
+	isDirectory, err := r.Client.IsDirectory(ctx, name)
+	if err != nil {
+		return nil, syscall.ENOENT
+	}
+	fmt.Println(name, isDirectory)
+	if isDirectory {
 		// ディレクトリの場合
-		chile := r.NewInode(ctx, &Directory{name: "hoge"}, fs.StableAttr{Mode: syscall.S_IFDIR})
+		chile := r.NewInode(ctx, &Directory{name: name}, fs.StableAttr{Mode: syscall.S_IFDIR})
 
 		// ディレクトリであるフラグとファイルパーミッションをORでビット演算している
 		out.Mode = syscall.S_IFDIR | 0755
@@ -52,12 +53,12 @@ func (r *Root) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs
 		// ファイルの場合
 		object, err := r.Client.GetObject(ctx, name)
 		if err != nil {
-			return nil, 0
+			return nil, syscall.ENOENT
 		}
 
 		body, err := io.ReadAll(object.Body)
 		if err != nil {
-			return nil, 0
+			return nil, syscall.ENOENT
 		}
 
 		chile := r.NewInode(ctx, &fs.MemRegularFile{
@@ -72,8 +73,6 @@ func (r *Root) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs
 		out.Size = uint64(object.ContentLengthByte)
 		return chile, 0
 	}
-
-	return nil, syscall.ENOENT
 }
 
 func (r *Root) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
@@ -82,7 +81,7 @@ func (r *Root) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 	iter, err := r.Client.List(ctx, "")
 
 	if err != nil {
-		return nil, 1
+		return nil, syscall.ENOENT
 	}
 	for i := range iter {
 		// / がある場合はディレクトリとみなす

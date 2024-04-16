@@ -10,6 +10,7 @@ import (
 type ClientBase interface {
 	List(ctx context.Context, key string) ([]string, error)
 	GetObject(ctx context.Context, key string) (*Object, error)
+	IsDirectory(ctx context.Context, key string) (bool, error)
 	Close()
 }
 
@@ -59,6 +60,22 @@ func (receiver S3Client) GetObject(ctx context.Context, key string) (*Object, er
 		Body:              object.Body,
 		ContentLengthByte: contentLengthByte,
 	}, nil
+
+}
+
+func (receiver S3Client) IsDirectory(ctx context.Context, key string) (bool, error) {
+	output, err := receiver.Client.ListObjectsV2(ctx, &s3v2.ListObjectsV2Input{
+		Bucket: aws.String(receiver.BucketName),
+		Prefix: aws.String(key + "/"),
+	})
+	if err != nil {
+		return false, err
+	}
+	var isDirectory bool
+	if output.KeyCount != nil && *output.KeyCount >= 1 {
+		isDirectory = true
+	}
+	return isDirectory, nil
 
 }
 
