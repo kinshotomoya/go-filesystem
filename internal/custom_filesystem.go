@@ -12,12 +12,9 @@ import (
 
 type Root struct {
 	fs.Inode
-	Client ClientBase
-}
-type Directory struct {
-	fs.Inode
 
-	name string
+	Client ClientBase
+	name   string // ディレクトリ、ファイルの名前（key name）
 }
 
 // これは型アサーションをすることでinterfaceの実装ミスをコンパイル時に防ぐために定義している
@@ -26,7 +23,6 @@ type Directory struct {
 // (fs.NodeGetattrer)((*Root)(nil))で↑で作成したHelloRoot型のnilポインタをfs.NodeGetattrer型に型アサーションしようとしている
 // こうすることで、HelloRoot構造体が、fs.NodeGetattrer interfaceを実装していない場合にコンパイルエラーが発生するので、コンパイル時に実装ミスに気づける
 var _ = (fs.NodeGetattrer)((*Root)(nil))
-
 var _ = (fs.NodeReaddirer)((*Root)(nil))
 var _ = (fs.NodeLookuper)((*Root)(nil))
 
@@ -37,21 +33,28 @@ func (r *Root) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut)
 }
 
 func (r *Root) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
-	isDirectory, err := r.Client.IsDirectory(ctx, name)
+	path := r.Path(r.Root())
+	var key string
+	if path != "" {
+		key = path + "/" + name
+	} else {
+		key = name
+	}
+	fmt.Println(path, name, key)
+	isDirectory, err := r.Client.IsDirectory(ctx, key)
 	if err != nil {
 		return nil, syscall.ENOENT
 	}
-	fmt.Println(name, isDirectory)
 	if isDirectory {
 		// ディレクトリの場合
-		chile := r.NewInode(ctx, &Directory{name: name}, fs.StableAttr{Mode: syscall.S_IFDIR})
+		chile := r.NewInode(ctx, &Root{name: name, Client: r.Client}, fs.StableAttr{Mode: syscall.S_IFDIR})
 
 		// ディレクトリであるフラグとファイルパーミッションをORでビット演算している
 		out.Mode = syscall.S_IFDIR | 0755
+		out.Size = uint64(100000) // TODO: 仮
 		return chile, 0
 	} else {
-		// ファイルの場合
-		object, err := r.Client.GetObject(ctx, name)
+		object, err := r.Client.GetObject(ctx, key)
 		if err != nil {
 			return nil, syscall.ENOENT
 		}
@@ -77,64 +80,81 @@ func (r *Root) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs
 
 func (r *Root) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 	entry := make([]fuse.DirEntry, 0)
-	// rootなのでkey指定しない
-	iter, err := r.Client.List(ctx, "")
+	path := r.Path(r.Root())
+	var key string
+	if !r.IsRoot() {
+		if path != "" {
+			key = path + "/"
+		} else {
+			key = path
+		}
+	}
 
+	iter, err := r.Client.List(ctx, key, "")
 	if err != nil {
 		return nil, syscall.ENOENT
 	}
+
+	hashset := make(map[string]struct{})
 	for i := range iter {
-		// / がある場合はディレクトリとみなす
-		// child2/grandchild1.txt
-		s := strings.Split(iter[i], "/")
-		key := s[0]
-		if len(s) == 1 {
-			// ファイルの場合
-			entry = append(entry, fuse.DirEntry{
-				Mode: syscall.S_IFREG,
-				Name: key,
-			})
+		fmt.Println("read", key, iter[i])
+		if r.IsRoot() {
+			s := strings.Split(iter[i], "/")
+			key := s[0]
+			if len(s) == 1 {
+				// ファイルの場合
+				entry = append(entry, fuse.DirEntry{
+					Mode: syscall.S_IFREG,
+					Name: key,
+				})
+			} else {
+				// ディレクトリの場合
+				_, exist := hashset[key]
+				if !exist {
+					hashset[key] = struct{}{}
+					entry = append(entry, fuse.DirEntry{
+						Mode: syscall.S_IFDIR,
+						Name: key,
+					})
+				}
+			}
 		} else {
-			// ディレクトリの場合
-			entry = append(entry, fuse.DirEntry{
-				Mode: syscall.S_IFDIR,
-				Name: key,
-			})
+			// key = child2/child4/
+			// child2/child4/grandchild3.txt
+
+			// key = child2/
+			// child2/child4/grandchild3.txt
+			// child2/grandchild1.txt
+			fullPath := iter[i]
+			// grandchild3.txt
+
+			// child4/grandchild3.txt
+			// grandchild1.txt
+			trimedPath := strings.TrimPrefix(fullPath, key)
+			// [grandchild3.txt]
+
+			// [child4, grandchild3.txt]
+			// [grandchild1.txt]
+			splitedPath := strings.Split(trimedPath, "/")
+			if len(splitedPath) == 1 {
+				// ファイルの場合
+				entry = append(entry, fuse.DirEntry{
+					Mode: syscall.S_IFREG,
+					Name: splitedPath[0],
+				})
+			} else {
+				// ディレクトリの場合
+				entry = append(entry, fuse.DirEntry{
+					Mode: syscall.S_IFDIR,
+					// ディレクトリの名前だけでいい
+					// child2/child4/grandchild1.txtの場合は、child4を取得
+					Name: splitedPath[0],
+				})
+			}
+
 		}
+
 	}
 
 	return fs.NewListDirStream(entry), 0
-}
-
-func (d *Directory) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
-	if name == "children.txt" {
-		chile := d.NewInode(ctx, &fs.MemRegularFile{
-			Data: []byte("childrennnnn"),
-			Attr: fuse.Attr{
-				Mode: 0444,
-			},
-		}, fs.StableAttr{Mode: syscall.S_IFREG})
-
-		out.Mode = 0444
-		out.Size = 1
-		return chile, 0
-	}
-
-	return nil, syscall.ENOENT
-}
-
-func (d *Directory) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
-	// TODO: Directoryが保持しているnameでlocalstackを検索してあげる
-	//  以下は例として明示的にディレクトリ名とファイル名を指定している
-
-	if d.name == "hoge" {
-		entry := []fuse.DirEntry{
-			{
-				Mode: syscall.S_IFREG,
-				Name: "children.txt",
-			},
-		}
-		return fs.NewListDirStream(entry), 0
-	}
-	return nil, syscall.ENOENT
 }

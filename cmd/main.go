@@ -44,6 +44,20 @@ func connectProvider(provider string, env string, bucketName string) (internal.C
 		}
 	})
 
+	// デバッグ
+	resp, err := clientV2.ListObjectsV2(ctx, &s3v2.ListObjectsV2Input{
+		Bucket:    aws.String("my-bucket"),
+		Prefix:    aws.String("child2/child4/"),
+		Delimiter: aws.String(""),
+	})
+
+	if err != nil {
+		return nil, err
+	}
+	for i := range resp.Contents {
+		fmt.Println(*resp.Contents[i].Key)
+	}
+
 	return internal.S3Client{
 		Client:     clientV2,
 		BucketName: bucketName,
