@@ -22,6 +22,7 @@ type S3Client struct {
 type Object struct {
 	Body              io.Reader
 	ContentLengthByte int64
+	LastModified      int64 // 最終更新日
 }
 
 func (receiver S3Client) List(ctx context.Context, key string) ([]string, error) {
@@ -59,6 +60,7 @@ func (receiver S3Client) GetObject(ctx context.Context, key string) (*Object, er
 	return &Object{
 		Body:              object.Body,
 		ContentLengthByte: contentLengthByte,
+		LastModified:      object.LastModified.Unix(),
 	}, nil
 
 }

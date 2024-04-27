@@ -9,29 +9,35 @@ import (
 	"syscall"
 )
 
-type Root struct {
+type Node struct {
 	fs.Inode
 
-	Client ClientBase
-	name   string // ディレクトリ、ファイルの名前（key name）
+	Client      ClientBase
+	name        string // ディレクトリ、ファイルの名前（key name）
+	IsDirectory bool
 }
 
 // これは型アサーションをすることでinterfaceの実装ミスをコンパイル時に防ぐために定義している
 // 以下詳細：
-// (*Root)(nil)でHelloRoot型のnilポインタを返す
-// (fs.NodeGetattrer)((*Root)(nil))で↑で作成したHelloRoot型のnilポインタをfs.NodeGetattrer型に型アサーションしようとしている
+// (*Node)(nil)でHelloRoot型のnilポインタを返す
+// (fs.NodeGetattrer)((*Node)(nil))で↑で作成したHelloRoot型のnilポインタをfs.NodeGetattrer型に型アサーションしようとしている
 // こうすることで、HelloRoot構造体が、fs.NodeGetattrer interfaceを実装していない場合にコンパイルエラーが発生するので、コンパイル時に実装ミスに気づける
-var _ = (fs.NodeGetattrer)((*Root)(nil))
-var _ = (fs.NodeReaddirer)((*Root)(nil))
-var _ = (fs.NodeLookuper)((*Root)(nil))
+var _ = (fs.NodeGetattrer)((*Node)(nil))
+var _ = (fs.NodeReaddirer)((*Node)(nil))
+var _ = (fs.NodeLookuper)((*Node)(nil))
 
-// TODO: ここで指定したデータとlookupなどの各メソッドで定義した情報どちらが使われるのか調べる
-func (r *Root) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
-	out.Mode = 0755
+func (r *Node) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
+	if r.IsDirectory {
+		out.Mode = syscall.S_IFDIR | 0755
+		// TODO: ディレクトリの場合は、子供のファイルのサイズを合算する
+		out.Size = 1024 * 1024
+	} else {
+		out.Mode = syscall.S_IFREG | 0777
+	}
 	return 0
 }
 
-func (r *Root) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+func (r *Node) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
 	path := r.Path(r.Root())
 	var key string
 	if !r.IsRoot() {
@@ -44,11 +50,7 @@ func (r *Root) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs
 		return nil, syscall.ENOENT
 	}
 	if isDirectory {
-		chile := r.NewInode(ctx, &Root{name: name, Client: r.Client}, fs.StableAttr{Mode: syscall.S_IFDIR})
-
-		// ディレクトリであるフラグとファイルパーミッションをORでビット演算している
-		out.Mode = syscall.S_IFDIR | 0755
-		out.Size = uint64(100000) // TODO: 仮
+		chile := r.NewInode(ctx, &Node{name: name, Client: r.Client, IsDirectory: true}, fs.StableAttr{Mode: syscall.S_IFDIR})
 		return chile, 0
 	} else {
 		object, err := r.Client.GetObject(ctx, key)
@@ -64,18 +66,21 @@ func (r *Root) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs
 		chile := r.NewInode(ctx, &fs.MemRegularFile{
 			Data: body,
 			Attr: fuse.Attr{
-				// TODO: 権限は読み込み書き込み専用でいいか
-				Mode: 0444,
+				// ファイルの場合はここでの設定がlsで表示されている
+				// ただsizeはgo-fuse内部で自動計算されていそう
+				Mode:  syscall.S_IFREG | 0755,
+				Mtime: uint64(object.LastModified),
+				Atime: uint64(object.LastModified),
+				Ctime: uint64(object.LastModified),
 			},
-		}, fs.StableAttr{Mode: syscall.S_IFREG})
-
-		out.Mode = 0444
-		out.Size = uint64(object.ContentLengthByte)
+		}, fs.StableAttr{
+			Mode: syscall.S_IFREG,
+		})
 		return chile, 0
 	}
 }
 
-func (r *Root) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
+func (r *Node) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 	path := r.Path(r.Root())
 	if !r.IsRoot() {
 		path = path + "/"

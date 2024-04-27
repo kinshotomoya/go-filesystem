@@ -77,7 +77,7 @@ func main() {
 
 	opts := &fs.Options{}
 	// ルートディレクトリにマウントしている
-	server, err := fs.Mount(*mountDir, &internal.Root{Client: client}, opts)
+	server, err := fs.Mount(*mountDir, &internal.Node{Client: client, IsDirectory: true}, opts)
 	if err != nil {
 		log.Fatal("fatal mount")
 	}
