@@ -11,6 +11,7 @@ type ClientBase interface {
 	List(ctx context.Context, key string) ([]string, error)
 	GetObject(ctx context.Context, key string) (*Object, error)
 	IsDirectory(ctx context.Context, key string) (bool, error)
+	GetDirectoryInfo(ctx context.Context, key string) (*DirectoryInfo, error)
 	Close()
 }
 
@@ -25,7 +26,12 @@ type Object struct {
 	LastModified      int64 // 最終更新日
 }
 
-func (receiver S3Client) List(ctx context.Context, key string) ([]string, error) {
+type DirectoryInfo struct {
+	SumContentByte int64
+	LastModified   int64 // 最終更新日
+}
+
+func (receiver *S3Client) List(ctx context.Context, key string) ([]string, error) {
 	resp, err := receiver.Client.ListObjectsV2(ctx, &s3v2.ListObjectsV2Input{
 		Bucket: aws.String(receiver.BucketName),
 		Prefix: aws.String(key),
@@ -44,7 +50,7 @@ func (receiver S3Client) List(ctx context.Context, key string) ([]string, error)
 
 }
 
-func (receiver S3Client) GetObject(ctx context.Context, key string) (*Object, error) {
+func (receiver *S3Client) GetObject(ctx context.Context, key string) (*Object, error) {
 	object, err := receiver.Client.GetObject(ctx, &s3v2.GetObjectInput{
 		Bucket: aws.String(receiver.BucketName),
 		Key:    aws.String(key),
@@ -65,7 +71,7 @@ func (receiver S3Client) GetObject(ctx context.Context, key string) (*Object, er
 
 }
 
-func (receiver S3Client) IsDirectory(ctx context.Context, key string) (bool, error) {
+func (receiver *S3Client) IsDirectory(ctx context.Context, key string) (bool, error) {
 	output, err := receiver.Client.ListObjectsV2(ctx, &s3v2.ListObjectsV2Input{
 		Bucket: aws.String(receiver.BucketName),
 		Prefix: aws.String(key + "/"),
@@ -81,6 +87,37 @@ func (receiver S3Client) IsDirectory(ctx context.Context, key string) (bool, err
 
 }
 
-func (receiver S3Client) Close() {
+func (receiver *S3Client) GetDirectoryInfo(ctx context.Context, key string) (*DirectoryInfo, error) {
+	// 指定されたkey配下のファイルをトラバースして、合計ファイルサイズと一番更新日が遅いファイルの更新日を取得する
+	output, err := receiver.Client.ListObjectsV2(ctx, &s3v2.ListObjectsV2Input{
+		Bucket: aws.String(receiver.BucketName),
+		Prefix: aws.String(key + "/"),
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	var sumContentByte int64
+	var lastModifiedTimeUnix int64
+	for _, v := range output.Contents {
+		object, err := receiver.GetObject(ctx, *v.Key)
+		if err != nil {
+			return nil, err
+		}
+		sumContentByte += object.ContentLengthByte
+		if lastModifiedTimeUnix < object.LastModified {
+			lastModifiedTimeUnix = object.LastModified
+		}
+	}
+
+	return &DirectoryInfo{
+		SumContentByte: sumContentByte,
+		LastModified:   lastModifiedTimeUnix,
+	}, nil
+
+}
+
+func (receiver *S3Client) Close() {
 
 }

@@ -44,7 +44,7 @@ func connectProvider(provider string, env string, bucketName string) (internal.C
 		}
 	})
 
-	return internal.S3Client{
+	return &internal.S3Client{
 		Client:     clientV2,
 		BucketName: bucketName,
 	}, nil

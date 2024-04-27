@@ -12,9 +12,10 @@ import (
 type Node struct {
 	fs.Inode
 
-	Client      ClientBase
-	name        string // ディレクトリ、ファイルの名前（key name）
-	IsDirectory bool
+	Client        ClientBase
+	name          string // ディレクトリ、ファイルの名前（key name）
+	IsDirectory   bool
+	DirectoryInfo *DirectoryInfo
 }
 
 // これは型アサーションをすることでinterfaceの実装ミスをコンパイル時に防ぐために定義している
@@ -29,8 +30,12 @@ var _ = (fs.NodeLookuper)((*Node)(nil))
 func (r *Node) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
 	if r.IsDirectory {
 		out.Mode = syscall.S_IFDIR | 0755
-		// TODO: ディレクトリの場合は、子供のファイルのサイズを合算する
-		out.Size = 1024 * 1024
+		if r.DirectoryInfo != nil {
+			out.Size = uint64(r.DirectoryInfo.SumContentByte)
+			out.Mtime = uint64(r.DirectoryInfo.LastModified)
+			out.Atime = out.Mtime
+			out.Ctime = out.Atime
+		}
 	} else {
 		out.Mode = syscall.S_IFREG | 0777
 	}
@@ -50,7 +55,11 @@ func (r *Node) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs
 		return nil, syscall.ENOENT
 	}
 	if isDirectory {
-		chile := r.NewInode(ctx, &Node{name: name, Client: r.Client, IsDirectory: true}, fs.StableAttr{Mode: syscall.S_IFDIR})
+		info, err := r.Client.GetDirectoryInfo(ctx, name)
+		if err != nil {
+			return nil, 0
+		}
+		chile := r.NewInode(ctx, &Node{name: name, Client: r.Client, IsDirectory: true, DirectoryInfo: info}, fs.StableAttr{Mode: syscall.S_IFDIR})
 		return chile, 0
 	} else {
 		object, err := r.Client.GetObject(ctx, key)
