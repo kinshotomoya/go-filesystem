@@ -26,10 +26,11 @@ type Node struct {
 var _ = (fs.NodeGetattrer)((*Node)(nil))
 var _ = (fs.NodeReaddirer)((*Node)(nil))
 var _ = (fs.NodeLookuper)((*Node)(nil))
+var _ = (fs.NodeCreater)((*Node)(nil))
 
 func (r *Node) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
 	if r.IsDirectory {
-		out.Mode = syscall.S_IFDIR | 0755
+		out.Mode = syscall.S_IFDIR | 0777
 		if r.DirectoryInfo != nil {
 			out.Size = uint64(r.DirectoryInfo.SumContentByte)
 			out.Mtime = uint64(r.DirectoryInfo.LastModified)
@@ -77,7 +78,7 @@ func (r *Node) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs
 			Attr: fuse.Attr{
 				// ファイルの場合はここでの設定がlsで表示されている
 				// ただsizeはgo-fuse内部で自動計算されていそう
-				Mode:  syscall.S_IFREG | 0755,
+				Mode:  syscall.S_IFREG | 0777,
 				Mtime: uint64(object.LastModified),
 				Atime: uint64(object.LastModified),
 				Ctime: uint64(object.LastModified),
@@ -164,4 +165,38 @@ func (r *Node) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 	}
 
 	return fs.NewListDirStream(entry), 0
+}
+
+func (r *Node) Create(ctx context.Context, name string, flags uint32, mode uint32, out *fuse.EntryOut) (node *fs.Inode, fh fs.FileHandle, fuseFlags uint32, errno syscall.Errno) {
+
+	// TODO: nameのsuffixに.txtのような拡張子がない場合はエラーにする
+
+	var key string
+	if r.IsRoot() {
+		key = name
+	} else {
+		key = r.Path(r.Root()) + "/" + name
+	}
+	object, err := r.Client.CreateObject(ctx, key)
+	if err != nil {
+		return nil, nil, 0, 1
+	}
+
+	chile := r.NewInode(ctx, &fs.MemRegularFile{
+		Data: nil,
+		Attr: fuse.Attr{
+			Mode:   mode | 0777,
+			Mtime:  uint64(object.LastModified),
+			Atime:  uint64(object.LastModified),
+			Ctime:  uint64(object.LastModified),
+			Flags_: flags,
+		},
+	}, fs.StableAttr{
+		Mode: syscall.S_IFREG,
+	})
+
+	//fs.NewLoopbackFile()
+
+	return chile, nil, 0, 0
+
 }

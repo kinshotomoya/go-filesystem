@@ -2,9 +2,11 @@ package internal
 
 import (
 	"context"
+	"fmt"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	s3v2 "github.com/aws/aws-sdk-go-v2/service/s3"
 	"io"
+	"time"
 )
 
 type ClientBase interface {
@@ -12,6 +14,7 @@ type ClientBase interface {
 	GetObject(ctx context.Context, key string) (*Object, error)
 	IsDirectory(ctx context.Context, key string) (bool, error)
 	GetDirectoryInfo(ctx context.Context, key string) (*DirectoryInfo, error)
+	CreateObject(ctx context.Context, key string) (*Object, error)
 	Close()
 }
 
@@ -29,6 +32,21 @@ type Object struct {
 type DirectoryInfo struct {
 	SumContentByte int64
 	LastModified   int64 // 最終更新日
+}
+
+func (receiver *S3Client) CreateObject(ctx context.Context, key string) (*Object, error) {
+	_, err := receiver.Client.PutObject(ctx, &s3v2.PutObjectInput{
+		Bucket: aws.String(receiver.BucketName),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		fmt.Errorf("error create file")
+		return nil, err
+	}
+
+	return &Object{
+		LastModified: time.Now().Unix(),
+	}, nil
 }
 
 func (receiver *S3Client) List(ctx context.Context, key string) ([]string, error) {
