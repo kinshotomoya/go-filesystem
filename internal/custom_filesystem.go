@@ -20,13 +20,19 @@ type Node struct {
 
 // これは型アサーションをすることでinterfaceの実装ミスをコンパイル時に防ぐために定義している
 // 以下詳細：
-// (*Node)(nil)でHelloRoot型のnilポインタを返す
+// (*Node)(nil)でNode型のnilポインタを返す
 // (fs.NodeGetattrer)((*Node)(nil))で↑で作成したHelloRoot型のnilポインタをfs.NodeGetattrer型に型アサーションしようとしている
 // こうすることで、HelloRoot構造体が、fs.NodeGetattrer interfaceを実装していない場合にコンパイルエラーが発生するので、コンパイル時に実装ミスに気づける
 var _ = (fs.NodeGetattrer)((*Node)(nil))
 var _ = (fs.NodeReaddirer)((*Node)(nil))
 var _ = (fs.NodeLookuper)((*Node)(nil))
 var _ = (fs.NodeCreater)((*Node)(nil))
+var _ = (fs.NodeUnlinker)((*Node)(nil))
+
+func (r *Node) Unlink(ctx context.Context, name string) syscall.Errno {
+	// TODO: s3に対象nameのファイルを削除する処理を追加する
+	return 0
+}
 
 func (r *Node) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
 	if r.IsDirectory {
@@ -125,24 +131,8 @@ func (r *Node) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 				}
 			}
 		} else {
-			// child2/child4ディレクトリでls打った場合
-			// key = child2/child4/
-			// child2/child4/grandchild3.txt
-
-			// child2ディレクトリでls打った場合
-			// key = child2/
-			// child2/child4/grandchild3.txt
-			// child2/grandchild1.txt
 			fullPath := iter[i]
-			// grandchild3.txt
-
-			// child4/grandchild3.txt
-			// grandchild1.txt
 			trimedPath := strings.TrimPrefix(fullPath, path)
-			// [grandchild3.txt]
-
-			// [child4, grandchild3.txt]
-			// [grandchild1.txt]
 			splitedPath := strings.Split(trimedPath, "/")
 			if len(splitedPath) == 1 {
 				// ファイルの場合
@@ -168,9 +158,6 @@ func (r *Node) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 }
 
 func (r *Node) Create(ctx context.Context, name string, flags uint32, mode uint32, out *fuse.EntryOut) (node *fs.Inode, fh fs.FileHandle, fuseFlags uint32, errno syscall.Errno) {
-
-	// TODO: nameのsuffixに.txtのような拡張子がない場合はエラーにする
-
 	var key string
 	if r.IsRoot() {
 		key = name
@@ -181,7 +168,6 @@ func (r *Node) Create(ctx context.Context, name string, flags uint32, mode uint3
 	if err != nil {
 		return nil, nil, 0, 1
 	}
-
 	chile := r.NewInode(ctx, &fs.MemRegularFile{
 		Data: nil,
 		Attr: fuse.Attr{
@@ -194,8 +180,6 @@ func (r *Node) Create(ctx context.Context, name string, flags uint32, mode uint3
 	}, fs.StableAttr{
 		Mode: syscall.S_IFREG,
 	})
-
-	//fs.NewLoopbackFile()
 
 	return chile, nil, 0, 0
 
