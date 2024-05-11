@@ -4,12 +4,13 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsv2cfg "github.com/aws/aws-sdk-go-v2/config"
 	s3v2 "github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/hanwen/go-fuse/v2/fs"
-	"log"
-	"myown-filesystem/internal"
+	"github.com/kinshotomoya/myown-filesystem/internal"
 )
 
 func connectProvider(provider string, env string, bucketName string) (internal.ClientBase, error) {
