@@ -1,4 +1,4 @@
-module myown-filesystem
+module github.com/kinshotomoya/myown-filesystem
 
 go 1.21.2
 
