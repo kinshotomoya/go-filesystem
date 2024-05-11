@@ -22,6 +22,11 @@ as if you ran linux command like `ls` `touch`
 - [ ] go cli
 
 
+## how to use
+install FUSE into your PC
+https://osxfuse.github.io/2024/04/05/macFUSE-4.7.0.html
+
+
 ## how to develop in local
 
 do umount after kill go process 
@@ -35,30 +40,11 @@ $ mount
 ```
 
 ### set up local test data
-
-create bucket
 ```shell
-$ aws --endpoint-url=http://localhost:4566 s3 mb s3://my-bucket
+$ ./test-data/insert-test-data.sh
 ```
 
-confirm the inside of the bucket 
-```shell
-$ aws --endpoint-url=http://localhost:4566 s3 ls s3://my-bucket
-```
-
-copy test-data directory to localstack
-```shell
-$ aws --endpoint-url=http://localhost:4566 s3 cp --recursive test-data s3://my-bucket/
-```
-
-go run
+### execute custom filesystem process
 ```shell
 $ go run cmd/main.go -mountdir /tmp/myown-filesystem -provider aws -env local -bucket my-bucket
 ```
-
- ## how to use
-install FUSE into your PC
-https://osxfuse.github.io/2024/04/05/macFUSE-4.7.0.html
-
-
-
