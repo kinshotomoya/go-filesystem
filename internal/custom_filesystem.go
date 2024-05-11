@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"fmt"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 	"io"
@@ -29,11 +30,7 @@ var _ = (fs.NodeLookuper)((*Node)(nil))
 var _ = (fs.NodeCreater)((*Node)(nil))
 var _ = (fs.NodeUnlinker)((*Node)(nil))
 
-func (r *Node) Unlink(ctx context.Context, name string) syscall.Errno {
-	// TODO: s3に対象nameのファイルを削除する処理を追加する
-	return 0
-}
-
+// TODO: エラーの時にunixのエラーコードを適当に返しているので、適切なエラーコードを返すようにする
 func (r *Node) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
 	if r.IsDirectory {
 		out.Mode = syscall.S_IFDIR | 0777
@@ -183,4 +180,21 @@ func (r *Node) Create(ctx context.Context, name string, flags uint32, mode uint3
 
 	return chile, nil, 0, 0
 
+}
+
+func (r *Node) Unlink(ctx context.Context, name string) syscall.Errno {
+	var key string
+	if r.IsRoot() {
+		key = name
+	} else {
+		key = r.Path(r.Root()) + "/" + name
+	}
+
+	err := r.Client.DeleteObject(ctx, key)
+	if err != nil {
+		fmt.Printf("delete error: %v", err)
+		return 1
+	}
+
+	return 0
 }

@@ -9,6 +9,3 @@ services:
       - SERVICES=s3
       - DEFAULT_REGION=ap-northeast-1
       - EDGE_PORT=4566
-#    volumes:
-#      - "${TMPDIR:-/tmp/localstack}:/tmp/localstack"
-#      - "/var/run/docker.sock:/var/run/docker.sock"

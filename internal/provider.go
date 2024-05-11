@@ -15,8 +15,11 @@ type ClientBase interface {
 	IsDirectory(ctx context.Context, key string) (bool, error)
 	GetDirectoryInfo(ctx context.Context, key string) (*DirectoryInfo, error)
 	CreateObject(ctx context.Context, key string) (*Object, error)
+	DeleteObject(ctx context.Context, key string) error
 	Close()
 }
+
+var _ = (ClientBase)((*S3Client)(nil))
 
 type S3Client struct {
 	Client     *s3v2.Client
@@ -32,6 +35,17 @@ type Object struct {
 type DirectoryInfo struct {
 	SumContentByte int64
 	LastModified   int64 // 最終更新日
+}
+
+func (receiver *S3Client) DeleteObject(ctx context.Context, key string) error {
+	_, err := receiver.Client.DeleteObject(ctx, &s3v2.DeleteObjectInput{
+		Bucket: aws.String(receiver.BucketName),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (receiver *S3Client) CreateObject(ctx context.Context, key string) (*Object, error) {

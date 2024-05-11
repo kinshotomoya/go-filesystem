@@ -13,7 +13,7 @@ as if you ran linux command like `ls` `touch`
 - [x] fix code to access localstack
 - [x] fix code to run ls linux command `ls`
 - [x] fix code to run other linux command `touch`
-- [ ] fix code to run other linux command `rm`
+- [x] fix code to run other linux command `rm`
 - [ ] fix code to run other linux command `rm -r`
 - [ ] fix code to run other linux command `mv`
 - [ ] fix code to run other linux command `tree`
