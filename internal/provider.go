@@ -2,7 +2,6 @@ package internal
 
 import (
 	"context"
-	"fmt"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	s3v2 "github.com/aws/aws-sdk-go-v2/service/s3"
 	"io"
@@ -54,7 +53,6 @@ func (receiver *S3Client) CreateObject(ctx context.Context, key string) (*Object
 		Key:    aws.String(key),
 	})
 	if err != nil {
-		fmt.Errorf("error create file")
 		return nil, err
 	}
 

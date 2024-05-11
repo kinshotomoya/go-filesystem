@@ -1,13 +1,16 @@
 package internal
 
 import (
+	// standard library
 	"context"
 	"fmt"
-	"github.com/hanwen/go-fuse/v2/fs"
-	"github.com/hanwen/go-fuse/v2/fuse"
 	"io"
 	"strings"
 	"syscall"
+
+	// external library
+	"github.com/hanwen/go-fuse/v2/fs"
+	"github.com/hanwen/go-fuse/v2/fuse"
 )
 
 type Node struct {
@@ -30,7 +33,13 @@ var _ = (fs.NodeLookuper)((*Node)(nil))
 var _ = (fs.NodeCreater)((*Node)(nil))
 var _ = (fs.NodeUnlinker)((*Node)(nil))
 
-// TODO: エラーの時にunixのエラーコードを適当に返しているので、適切なエラーコードを返すようにする
+//var _ = (fs.NodeRmdirer)((*Node)(nil))
+
+// TODO: rm -rした時の挙動を追加
+//func (r *Node) Rmdir(ctx context.Context, name string) syscall.Errno {
+//
+//}
+
 func (r *Node) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
 	if r.IsDirectory {
 		out.Mode = syscall.S_IFDIR | 0777
@@ -61,7 +70,7 @@ func (r *Node) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs
 	if isDirectory {
 		info, err := r.Client.GetDirectoryInfo(ctx, name)
 		if err != nil {
-			return nil, 0
+			return nil, syscall.ENOENT
 		}
 		chile := r.NewInode(ctx, &Node{name: name, Client: r.Client, IsDirectory: true, DirectoryInfo: info}, fs.StableAttr{Mode: syscall.S_IFDIR})
 		return chile, 0
@@ -163,7 +172,7 @@ func (r *Node) Create(ctx context.Context, name string, flags uint32, mode uint3
 	}
 	object, err := r.Client.CreateObject(ctx, key)
 	if err != nil {
-		return nil, nil, 0, 1
+		return nil, nil, 0, syscall.EACCES
 	}
 	chile := r.NewInode(ctx, &fs.MemRegularFile{
 		Data: nil,
@@ -193,7 +202,7 @@ func (r *Node) Unlink(ctx context.Context, name string) syscall.Errno {
 	err := r.Client.DeleteObject(ctx, key)
 	if err != nil {
 		fmt.Printf("delete error: %v", err)
-		return 1
+		return syscall.ENOENT
 	}
 
 	return 0
