@@ -38,6 +38,7 @@ var _ = (fs.NodeUnlinker)((*Node)(nil))
 // TODO: rm -rした時の挙動を追加
 //func (r *Node) Rmdir(ctx context.Context, name string) syscall.Errno {
 //
+
 //}
 
 func (r *Node) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
