@@ -46,5 +46,5 @@ $ ./test-data/insert-test-data.sh
 
 ### execute custom filesystem process
 ```shell
-$ go run cmd/main.go -mountdir /tmp/myown-filesystem -provider aws -env local -bucket my-bucket
+$ go run cfs/main.go -mountdir /tmp/myown-filesystem -provider aws -env local -bucket my-bucket
 ```
