@@ -2,13 +2,13 @@
 
 cfs(custom file system)
 
-## Motivation
-
-you can access to cloud file storage such as aws s3, gcp gcs, azure blob 
+You can access to cloud file storage such as aws s3, gcp gcs, azure blob 
 as if you ran linux command like `ls` `touch`
 
 ## Current features:
-`ls` `touch` `rm` command
+- Currently only aws localstack can be usued
+- following linux command can be usued 
+  - `ls` `touch` `rm`
 
 I am implementing the other commands now
 
@@ -36,7 +36,7 @@ Example:
 cfs -mountdir /tmp/myown-filesystem -provider aws -env local -bucket my-bucket
 ```
 
-### 4. you can 
+### 4. you can your filesystem as usual
 ```shell
 cd /tmp/myown-filesystem
 ```
@@ -44,8 +44,7 @@ cd /tmp/myown-filesystem
 Example:
 ```shell
 cd /tmp/myown-filesystem
-ls -lh
-[]:/tmp/myown-filesystem/ ls -lh                                             [/tmp/myown-filesystem]
+[]:/tmp/myown-filesystem/ ls -lh                                            
 total 32
 -rwxrwxrwx  0 root  wheel    86B  5 14 08:07 child1.txt
 drwxrwxrwx  0 root  wheel    22B  5 14 08:07 child2
