@@ -22,11 +22,6 @@ type Node struct {
 	DirectoryInfo *DirectoryInfo
 }
 
-// これは型アサーションをすることでinterfaceの実装ミスをコンパイル時に防ぐために定義している
-// 以下詳細：
-// (*Node)(nil)でNode型のnilポインタを返す
-// (fs.NodeGetattrer)((*Node)(nil))で↑で作成したHelloRoot型のnilポインタをfs.NodeGetattrer型に型アサーションしようとしている
-// こうすることで、HelloRoot構造体が、fs.NodeGetattrer interfaceを実装していない場合にコンパイルエラーが発生するので、コンパイル時に実装ミスに気づける
 var _ = (fs.NodeGetattrer)((*Node)(nil))
 var _ = (fs.NodeReaddirer)((*Node)(nil))
 var _ = (fs.NodeLookuper)((*Node)(nil))
@@ -69,7 +64,7 @@ func (r *Node) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs
 		return nil, syscall.ENOENT
 	}
 	if isDirectory {
-		info, err := r.Client.GetDirectoryInfo(ctx, name)
+		info, err := r.Client.GetDirectoryInfo(ctx, key)
 		if err != nil {
 			return nil, syscall.ENOENT
 		}
