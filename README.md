@@ -31,17 +31,17 @@ https://osxfuse.github.io/2024/04/05/macFUSE-4.7.0.html
 
 you can confirm the latest version [here](https://github.com/kinshotomoya/myown-filesystem/releases)
 ```shell
-$ go install github.com/kinshotomoya/myown-filesystem/cfs@version
+go install github.com/kinshotomoya/myown-filesystem/cfs@version
 ```
 
 ### Mount your directory as follows
 ```shell
-$ cfs -mountdir {mountDir} -provider aws -env local -bucket {bucketName}
+cfs -mountdir {mountDir} -provider aws -env local -bucket {bucketName}
 ```
 
 Example:
 ```shell
-$ cfs -mountdir /tmp/myown-filesystem -provider aws -env local -bucket my-bucket
+cfs -mountdir /tmp/myown-filesystem -provider aws -env local -bucket my-bucket
 ```
 
 
@@ -49,20 +49,20 @@ $ cfs -mountdir /tmp/myown-filesystem -provider aws -env local -bucket my-bucket
 
 do umount after kill go process 
 ```shell
-$ umount /tmp/myown-filesystem
+umount /tmp/myown-filesystem
 ```
 
 if you want to confirm what filesystem are mounted, you run following command
 ```shell
-$ mount
+mount
 ```
 
 ### set up local test data
 ```shell
-$ ./test-data/insert-test-data.sh
+./test-data/insert-test-data.sh
 ```
 
 ### execute custom filesystem process
 ```shell
-$ go run cfs/main.go -mountdir /tmp/myown-filesystem -provider aws -env local -bucket my-bucket
+go run cfs/main.go -mountdir /tmp/myown-filesystem -provider aws -env local -bucket my-bucket
 ```
