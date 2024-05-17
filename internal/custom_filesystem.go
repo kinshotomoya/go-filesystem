@@ -3,7 +3,6 @@ package internal
 import (
 	// standard library
 	"context"
-	"fmt"
 	"io"
 	"strings"
 	"syscall"
@@ -199,7 +198,6 @@ func (r *Node) Create(ctx context.Context, name string, flags uint32, mode uint3
 }
 
 func (r *Node) Unlink(ctx context.Context, name string) syscall.Errno {
-	fmt.Printf("ulink: %s\n", name)
 	var key string
 	if r.IsRoot() {
 		key = name
@@ -209,7 +207,6 @@ func (r *Node) Unlink(ctx context.Context, name string) syscall.Errno {
 
 	err := r.Client.DeleteObject(ctx, key)
 	if err != nil {
-		fmt.Printf("delete error: %v", err)
 		return syscall.ENOENT
 	}
 
