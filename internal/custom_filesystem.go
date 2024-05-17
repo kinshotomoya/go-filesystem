@@ -28,8 +28,7 @@ var _ = (fs.NodeCreater)((*Node)(nil))
 var _ = (fs.NodeUnlinker)((*Node)(nil))
 var _ = (fs.NodeRmdirer)((*Node)(nil))
 
-func (r *Node) Rmdir(ctx context.Context, name string) syscall.Errno {
-	// このメソッドが呼ばれる前に、対象ディレクトリ配下のオブジェクトのunlinkが呼ばれてすでに削除されている
+func (r *Node) fullPath(name string) string {
 	path := r.Path(r.Root())
 	var key string
 	if !r.IsRoot() {
@@ -37,7 +36,23 @@ func (r *Node) Rmdir(ctx context.Context, name string) syscall.Errno {
 	} else {
 		key = name
 	}
+	return key
+}
 
+func (r *Node) createNewFullPath(name string) string {
+	var key string
+	if r.IsRoot() {
+		key = name
+	} else {
+		key = r.Path(r.Root()) + "/" + name
+	}
+
+	return key
+}
+
+func (r *Node) Rmdir(ctx context.Context, name string) syscall.Errno {
+	// このメソッドが呼ばれる前に、対象ディレクトリ配下のオブジェクトのunlinkが呼ばれてすでに削除されている
+	key := r.fullPath(name)
 	list, err := r.Client.List(ctx, key)
 	if err != nil || len(list) > 0 {
 		return syscall.ENOENT
@@ -62,13 +77,7 @@ func (r *Node) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut)
 }
 
 func (r *Node) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
-	path := r.Path(r.Root())
-	var key string
-	if !r.IsRoot() {
-		key = path + "/" + name
-	} else {
-		key = name
-	}
+	key := r.fullPath(name)
 	isDirectory, err := r.Client.IsDirectory(ctx, key)
 	if err != nil {
 		return nil, syscall.ENOENT
@@ -170,12 +179,8 @@ func (r *Node) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 }
 
 func (r *Node) Create(ctx context.Context, name string, flags uint32, mode uint32, out *fuse.EntryOut) (node *fs.Inode, fh fs.FileHandle, fuseFlags uint32, errno syscall.Errno) {
-	var key string
-	if r.IsRoot() {
-		key = name
-	} else {
-		key = r.Path(r.Root()) + "/" + name
-	}
+	key := r.createNewFullPath(name)
+
 	object, err := r.Client.CreateObject(ctx, key)
 	if err != nil {
 		return nil, nil, 0, syscall.EACCES
@@ -198,12 +203,7 @@ func (r *Node) Create(ctx context.Context, name string, flags uint32, mode uint3
 }
 
 func (r *Node) Unlink(ctx context.Context, name string) syscall.Errno {
-	var key string
-	if r.IsRoot() {
-		key = name
-	} else {
-		key = r.Path(r.Root()) + "/" + name
-	}
+	key := r.createNewFullPath(name)
 
 	err := r.Client.DeleteObject(ctx, key)
 	if err != nil {
