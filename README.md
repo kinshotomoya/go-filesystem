@@ -81,7 +81,7 @@ go run cfs/main.go -mountdir /tmp/myown-filesystem -provider aws -env local -buc
 - [x] fix code to run ls linux command `ls`
 - [x] fix code to run other linux command `touch`
 - [x] fix code to run other linux command `rm`
-- [ ] fix code to run other linux command `rm -r`
+- [x] fix code to run other linux command `rm -r`
 - [ ] fix code to run other linux command `mv`
 - [ ] fix code to run other linux command `tree`
 - [ ] fix code to access not only localstack but also other cloud storage

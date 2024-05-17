@@ -27,14 +27,25 @@ var _ = (fs.NodeReaddirer)((*Node)(nil))
 var _ = (fs.NodeLookuper)((*Node)(nil))
 var _ = (fs.NodeCreater)((*Node)(nil))
 var _ = (fs.NodeUnlinker)((*Node)(nil))
+var _ = (fs.NodeRmdirer)((*Node)(nil))
 
-//var _ = (fs.NodeRmdirer)((*Node)(nil))
+func (r *Node) Rmdir(ctx context.Context, name string) syscall.Errno {
+	// このメソッドが呼ばれる前に、対象ディレクトリ配下のオブジェクトのunlinkが呼ばれてすでに削除されている
+	path := r.Path(r.Root())
+	var key string
+	if !r.IsRoot() {
+		key = path + "/" + name
+	} else {
+		key = name
+	}
 
-// TODO: rm -rした時の挙動を追加
-//func (r *Node) Rmdir(ctx context.Context, name string) syscall.Errno {
-//
+	list, err := r.Client.List(ctx, key)
+	if err != nil || len(list) > 0 {
+		return syscall.ENOENT
+	}
 
-//}
+	return 0
+}
 
 func (r *Node) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
 	if r.IsDirectory {
@@ -188,6 +199,7 @@ func (r *Node) Create(ctx context.Context, name string, flags uint32, mode uint3
 }
 
 func (r *Node) Unlink(ctx context.Context, name string) syscall.Errno {
+	fmt.Printf("ulink: %s\n", name)
 	var key string
 	if r.IsRoot() {
 		key = name
