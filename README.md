@@ -87,5 +87,6 @@ go run cfs/main.go -mountdir /tmp/myown-filesystem -provider aws -env local -buc
 - [ ] fix code to run other linux command `tree`
 - [ ] fix code to access not only localstack but also other cloud storage
 - [x] fix code to not display `override rwxrwxrwx root/wheel uchg for hoge.txt?` when removing files that is created on mounted filesystem
-- [ ] fix code to umount directory when kill go process 
+- [ ] fix code to umount directory when kill go process
+- [ ] not to access to s3 carelessly
 - [x] go cli
