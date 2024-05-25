@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
+	"os/signal"
+	"syscall"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsv2cfg "github.com/aws/aws-sdk-go-v2/config"
@@ -13,9 +16,7 @@ import (
 	"github.com/kinshotomoya/myown-filesystem/internal"
 )
 
-func connectProvider(provider string, env string, bucketName string) (internal.ClientBase, error) {
-	ctx := context.Background()
-
+func connectProvider(ctx context.Context, provider string, env string, bucketName string) (internal.ClientBase, error) {
 	endpoint := aws.EndpointResolverWithOptionsFunc(func(service, region string, options ...interface{}) (aws.Endpoint, error) {
 		if env == "local" {
 			return aws.Endpoint{
@@ -51,10 +52,8 @@ func connectProvider(provider string, env string, bucketName string) (internal.C
 	}, nil
 }
 
-// myown -mountdir /tmp/myown-filesystem -provider aws -env local -bucket my-bucket
 func main() {
-	// fs.api.goに定義されているそれぞれのinterfaceを実装することで、ファイルシステムに対するシステムコールをハンドリングできるようになる
-	// 例えば、Readdirメソッドを実装すると、lsコマンドで発行されるシステムコールをgoプロセス内でハンドリングできる
+	ctx := context.Background()
 	mountDir := flag.String("mountdir", "/tmp/myown-filesystem", "mount directory")
 	provider := flag.String("provider", "aws", "cloud provider aws, gcp, azure")
 	env := flag.String("env", "local", "environment")
@@ -69,7 +68,7 @@ func main() {
 		log.Fatal("provider flag is required")
 	}
 
-	client, err := connectProvider(*provider, *env, *bucketName)
+	client, err := connectProvider(ctx, *provider, *env, *bucketName)
 	if err != nil {
 		log.Println(err)
 		log.Fatal("fatal connect provider")
@@ -83,7 +82,16 @@ func main() {
 		log.Fatal("fatal mount")
 	}
 	fmt.Println("mounted to target directory")
-	server.Wait()
-	// TODO: シグナルハンドリング
-	server.Unmount()
+
+	syscallCtx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	defer cancel()
+
+	<-syscallCtx.Done()
+	fmt.Println("syscall received...")
+
+	err = server.Unmount()
+	if err != nil {
+		log.Fatal(errors.New(fmt.Sprintf("error occured when unmounting target directory. Manually unmount the target directory(%s).: %v", *mountDir, err)))
+	}
+	fmt.Println("finished unmount target directory completely")
 }
