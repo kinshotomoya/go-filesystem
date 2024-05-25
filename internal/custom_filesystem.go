@@ -16,7 +16,7 @@ type Node struct {
 	fs.Inode
 
 	Client        ClientBase
-	name          string // ディレクトリ、ファイルの名前（key name）
+	name          string // the name of directory or file
 	IsDirectory   bool
 	DirectoryInfo *DirectoryInfo
 }
@@ -103,8 +103,8 @@ func (r *Node) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs
 		chile := r.NewInode(ctx, &fs.MemRegularFile{
 			Data: body,
 			Attr: fuse.Attr{
-				// ファイルの場合はここでの設定がlsで表示されている
-				// ただsizeはgo-fuse内部で自動計算されていそう
+				// In the case of file, this attributes is shown when executing ls command.
+				// However, the size attribute seems to be calculated automatically in the go-fuse.
 				Mode:  syscall.S_IFREG | 0777,
 				Mtime: uint64(object.LastModified),
 				Atime: uint64(object.LastModified),
@@ -135,13 +135,13 @@ func (r *Node) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 			s := strings.Split(iter[i], "/")
 			key := s[0]
 			if len(s) == 1 {
-				// ファイルの場合
+				// file
 				entry = append(entry, fuse.DirEntry{
 					Mode: syscall.S_IFREG,
 					Name: key,
 				})
 			} else {
-				// ディレクトリの場合
+				// directory
 				_, exist := hashset[key]
 				if !exist {
 					hashset[key] = struct{}{}
@@ -156,17 +156,15 @@ func (r *Node) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 			trimedPath := strings.TrimPrefix(fullPath, path)
 			splitedPath := strings.Split(trimedPath, "/")
 			if len(splitedPath) == 1 {
-				// ファイルの場合
+				// file
 				entry = append(entry, fuse.DirEntry{
 					Mode: syscall.S_IFREG,
 					Name: splitedPath[0],
 				})
 			} else {
-				// ディレクトリの場合
+				// directory
 				entry = append(entry, fuse.DirEntry{
 					Mode: syscall.S_IFDIR,
-					// ディレクトリの名前だけでいい
-					// child2/child4/grandchild1.txtの場合は、child4を取得
 					Name: splitedPath[0],
 				})
 			}
