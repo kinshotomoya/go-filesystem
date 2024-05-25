@@ -188,11 +188,12 @@ func (r *Node) Create(ctx context.Context, name string, flags uint32, mode uint3
 	chile := r.NewInode(ctx, &fs.MemRegularFile{
 		Data: nil,
 		Attr: fuse.Attr{
-			Mode:   mode | 0777,
-			Mtime:  uint64(object.LastModified),
-			Atime:  uint64(object.LastModified),
-			Ctime:  uint64(object.LastModified),
-			Flags_: flags,
+			Mode:  mode | 0777,
+			Mtime: uint64(object.LastModified),
+			Atime: uint64(object.LastModified),
+			Ctime: uint64(object.LastModified),
+			// NOTE: A file is created with the uchg flag by default. If so, you cannot remove that file without confirmation.
+			Flags_: 0,
 		},
 	}, fs.StableAttr{
 		Mode: syscall.S_IFREG,
