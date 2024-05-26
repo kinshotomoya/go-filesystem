@@ -6,6 +6,8 @@ This tool allows you to interact with cloud storage services like AWS S3, GCP GC
 - **Current:** Supports AWS Localstack with commands ls, touch, rm, rm -r.
 - **Planned:** Additional commands and support for more cloud providers.
 
+### important
+This works only on MacOS(Apple Silicon or Intel) now.
 
 ## Installation
 
