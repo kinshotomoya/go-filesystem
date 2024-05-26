@@ -48,6 +48,20 @@ drwxrwxrwx  0 root  wheel    11B  5 14 08:07 child3
 -rwxrwxrwx  0 root  wheel   219B  5 14 08:07 insert-test-data.sh
 ```
 
+### 5. Unmount the Directory
+Change directory before exiting the go-filesystem process so that the directory is unmounted automatically and successfully.
+If there is any trouble as unmounting the directory, do it manually 
+
+```shell
+umount {target directory}
+```
+
+Example:
+```shell
+umount /tmp/myown-filesystem/
+```
+
+
 ## Development
 
 ### Verify Mounted Filesystems

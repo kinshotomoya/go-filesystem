@@ -87,7 +87,6 @@ func main() {
 	defer cancel()
 
 	<-syscallCtx.Done()
-	fmt.Println("syscall received...")
 
 	err = server.Unmount()
 	if err != nil {
