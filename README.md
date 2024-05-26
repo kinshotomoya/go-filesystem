@@ -1,14 +1,12 @@
-# cfs
-
-cfs(custom file system)
+# go-filesystem
 
 You can access to cloud file storage such as aws s3, gcp gcs, azure blob 
 as if you ran linux command like `ls` `touch`
 
 ## Current features:
-- Currently only aws localstack can be usued
-- following linux command can be usued 
-  - `ls` `touch` `rm`
+- Currently only aws localstack can be used
+- following linux command can be used 
+  - `ls` `touch` `rm` `rm -r`
 
 I am implementing the other commands now
 

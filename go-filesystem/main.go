@@ -13,7 +13,7 @@ import (
 	awsv2cfg "github.com/aws/aws-sdk-go-v2/config"
 	s3v2 "github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/hanwen/go-fuse/v2/fs"
-	"github.com/kinshotomoya/myown-filesystem/internal"
+	"github.com/kinshotomoya/go-filesystem/internal"
 )
 
 func connectProvider(ctx context.Context, provider string, env string, bucketName string) (internal.ClientBase, error) {
