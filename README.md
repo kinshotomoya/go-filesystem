@@ -1,42 +1,40 @@
 # go-filesystem
 
-You can access to cloud file storage such as aws s3, gcp gcs, azure blob 
-as if you ran linux command like `ls` `touch`
+This tool allows you to interact with cloud storage services like AWS S3, GCP GCS, and Azure Blob Storage using familiar Linux commands (ls, touch, etc.).
 
 ## Current features:
-- Currently only aws localstack can be used
-- following linux command can be used 
-  - `ls` `touch` `rm` `rm -r`
+- **Current:** Supports AWS Localstack with commands ls, touch, rm, rm -r.
+- **Planned:** Additional commands and support for more cloud providers.
 
-I am implementing the other commands now
 
-## How to use
+## Installation
 
-### 1. install FUSE into your PC
+### 1. Install FUSE
 
 https://osxfuse.github.io/2024/04/05/macFUSE-4.7.0.html
 
+### 2. Install the Binary
 
-### 2. Install binary
-
-you can confirm the latest version [here](https://github.com/kinshotomoya/myown-filesystem/releases)
+Find the latest version and install:
 ```shell
-go install github.com/kinshotomoya/myown-filesystem/cfs@version
+go install github.com/kinshotomoya/go-filesystem/go-filesystem@latest
 ```
 
-### 3. Mount your directory as follows
+### 3. Mount Directory
 ```shell
-cfs -mountdir {mountDir} -provider aws -env local -bucket {bucketName}
+go-filesystem -mountdir {mountDir} -provider aws -env local -bucket {bucketName}
 ```
 
 Example:
 ```shell
-cfs -mountdir /tmp/myown-filesystem -provider aws -env local -bucket my-bucket
+go-filesystem -mountdir /tmp/myown-filesystem -provider aws -env local -bucket my-bucket
 ```
 
-### 4. you can your filesystem as usual
+### 4. Use the Filesystem
+Navigate and use as usual:
 ```shell
 cd /tmp/myown-filesystem
+ls -lh
 ```
 
 Example:
@@ -50,27 +48,33 @@ drwxrwxrwx  0 root  wheel    11B  5 14 08:07 child3
 -rwxrwxrwx  0 root  wheel   219B  5 14 08:07 insert-test-data.sh
 ```
 
-## How to develop in local
+## Development
 
-do umount after kill go process 
-```shell
-umount /tmp/myown-filesystem
-```
-
-if you want to confirm what filesystem are mounted, you run following command
+### Verify Mounted Filesystems
 ```shell
 mount
 ```
 
-### set up local test data
+### Run localstack on docker-compose
+```shell
+docker compose up -d
+```
+
+### Setup Local Test Data 
 ```shell
 ./test-data/insert-test-data.sh
 ```
 
-### execute custom filesystem process
+### Run go-filesystem
 ```shell
-go run cfs/main.go -mountdir /tmp/myown-filesystem -provider aws -env local -bucket my-bucket
+go run go-filesystem/main.go -mountdir /tmp/myown-filesystem -provider aws -env local -bucket my-bucket
 ```
+
+## License
+MIT License
+
+Feel free to further adjust this to match your project's specifics and add any missing details.
+
 
 ## Tasks
 - [x] sample code (access memory file directory)
