@@ -27,6 +27,10 @@ var _ = (fs.NodeLookuper)((*Node)(nil))
 var _ = (fs.NodeCreater)((*Node)(nil))
 var _ = (fs.NodeUnlinker)((*Node)(nil))
 var _ = (fs.NodeRmdirer)((*Node)(nil))
+var _ = (fs.NodeMkdirer)((*Node)(nil))
+
+// TODO: fix to proper permission
+const FilePermission = 0777
 
 func (r *Node) fullPath(name string) string {
 	path := r.Path(r.Root())
@@ -50,6 +54,28 @@ func (r *Node) createNewFullPath(name string) string {
 	return key
 }
 
+func (r *Node) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+	key := r.fullPath(name)
+	object, err := r.Client.CreateObject(ctx, key+"/")
+	if err != nil {
+		return nil, syscall.ENOENT
+	}
+	newNode := r.NewInode(ctx, &fs.MemRegularFile{
+		Data: nil,
+		Attr: fuse.Attr{
+			Mode:   mode | FilePermission,
+			Mtime:  uint64(object.LastModified),
+			Atime:  uint64(object.LastModified),
+			Ctime:  uint64(object.LastModified),
+			Flags_: 0,
+		},
+	}, fs.StableAttr{
+		Mode: syscall.S_IFDIR,
+	})
+
+	return newNode, 0
+}
+
 func (r *Node) Rmdir(ctx context.Context, name string) syscall.Errno {
 	// このメソッドが呼ばれる前に、対象ディレクトリ配下のオブジェクトのunlinkが呼ばれてすでに削除されている
 	key := r.fullPath(name)
@@ -63,7 +89,7 @@ func (r *Node) Rmdir(ctx context.Context, name string) syscall.Errno {
 
 func (r *Node) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
 	if r.IsDirectory {
-		out.Mode = syscall.S_IFDIR | 0777
+		out.Mode = syscall.S_IFDIR | FilePermission
 		if r.DirectoryInfo != nil {
 			out.Size = uint64(r.DirectoryInfo.SumContentByte)
 			out.Mtime = uint64(r.DirectoryInfo.LastModified)
@@ -71,7 +97,7 @@ func (r *Node) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut)
 			out.Ctime = out.Atime
 		}
 	} else {
-		out.Mode = syscall.S_IFREG | 0777
+		out.Mode = syscall.S_IFREG | FilePermission
 	}
 	return 0
 }
@@ -105,7 +131,7 @@ func (r *Node) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs
 			Attr: fuse.Attr{
 				// In the case of file, this attributes is shown when executing ls command.
 				// However, the size attribute seems to be calculated automatically in the go-fuse.
-				Mode:  syscall.S_IFREG | 0777,
+				Mode:  syscall.S_IFREG | FilePermission,
 				Mtime: uint64(object.LastModified),
 				Atime: uint64(object.LastModified),
 				Ctime: uint64(object.LastModified),
@@ -186,7 +212,7 @@ func (r *Node) Create(ctx context.Context, name string, flags uint32, mode uint3
 	chile := r.NewInode(ctx, &fs.MemRegularFile{
 		Data: nil,
 		Attr: fuse.Attr{
-			Mode:  mode | 0777,
+			Mode:  mode | FilePermission,
 			Mtime: uint64(object.LastModified),
 			Atime: uint64(object.LastModified),
 			Ctime: uint64(object.LastModified),
