@@ -99,8 +99,8 @@ Feel free to further adjust this to match your project's specifics and add any m
 - [x] fix code to run ls linux command `ls`
 - [x] fix code to run other linux command `touch`
 - [x] fix code to run other linux command `rm`
-- [x] fix code to run other linux command `rm -r`
-- [ ] fix code to run other linux command `mkdir`
+- [x] fix code to run other linux command `mkdir`
+- [] fix code to run other linux command `rm -r`
 - [ ] fix code to run other linux command `mv`
 - [ ] fix code to run other linux command `tree`
 - [ ] fix code to access not only localstack but also other cloud storage

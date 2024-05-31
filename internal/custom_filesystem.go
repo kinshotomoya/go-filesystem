@@ -3,6 +3,7 @@ package internal
 import (
 	// standard library
 	"context"
+	"fmt"
 	"io"
 	"strings"
 	"syscall"
@@ -32,6 +33,8 @@ var _ = (fs.NodeMkdirer)((*Node)(nil))
 // TODO: fix to proper permission
 const FilePermission = 0777
 
+// NOTE: fileの場合は、MemRegularFileを利用。directoryの場合はNodeを利用
+
 func (r *Node) fullPath(name string) string {
 	path := r.Path(r.Root())
 	var key string
@@ -60,28 +63,56 @@ func (r *Node) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.En
 	if err != nil {
 		return nil, syscall.ENOENT
 	}
-	newNode := r.NewInode(ctx, &fs.MemRegularFile{
+
+	dirInfo := DirectoryInfo{
+		LastModified: object.LastModified,
+	}
+	newNode := r.NewInode(ctx, &Node{name: name, Client: r.Client, IsDirectory: true, DirectoryInfo: &dirInfo}, fs.StableAttr{Mode: syscall.S_IFDIR})
+
+	return newNode, 0
+}
+
+func (r *Node) Create(ctx context.Context, name string, flags uint32, mode uint32, out *fuse.EntryOut) (node *fs.Inode, fh fs.FileHandle, fuseFlags uint32, errno syscall.Errno) {
+	key := r.createNewFullPath(name)
+
+	object, err := r.Client.CreateObject(ctx, key)
+	if err != nil {
+		return nil, nil, 0, syscall.EACCES
+	}
+	chile := r.NewInode(ctx, &fs.MemRegularFile{
 		Data: nil,
 		Attr: fuse.Attr{
-			Mode:   mode | FilePermission,
-			Mtime:  uint64(object.LastModified),
-			Atime:  uint64(object.LastModified),
-			Ctime:  uint64(object.LastModified),
+			Mode:  mode | FilePermission,
+			Mtime: uint64(object.LastModified),
+			Atime: uint64(object.LastModified),
+			Ctime: uint64(object.LastModified),
+			// NOTE: A file is created with the uchg flag by default. If so, you cannot remove that file without confirmation.
 			Flags_: 0,
 		},
 	}, fs.StableAttr{
-		Mode: syscall.S_IFDIR,
+		Mode: syscall.S_IFREG,
 	})
 
-	return newNode, 0
+	return chile, nil, 0, 0
+
 }
 
 func (r *Node) Rmdir(ctx context.Context, name string) syscall.Errno {
 	// このメソッドが呼ばれる前に、対象ディレクトリ配下のオブジェクトのunlinkが呼ばれてすでに削除されている
 	key := r.fullPath(name)
 	list, err := r.Client.List(ctx, key)
-	if err != nil || len(list) > 0 {
+
+	if err != nil {
 		return syscall.ENOENT
+	}
+
+	// TODO: １つの関数にまとめる
+	directory := key + "/"
+	if len(list) == 1 && list[0] == directory {
+		err = r.Client.DeleteObject(ctx, directory)
+		if err != nil {
+			return syscall.ENOENT
+		}
 	}
 
 	return 0
@@ -154,9 +185,24 @@ func (r *Node) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 		return nil, syscall.ENOENT
 	}
 
+	// TODO: １つの関数にまとめる
+	// NOTE:
+	// mkdirで作成したdirectoryで、中身が何も入っていない場合は
+	// s3は空のオブジェクトを作成して、ディレクトリをエミュレートしている
+	// この空のオブジェクトがあった場合にはディレクトリ自体が空であると表現する
+	//[git][* feature/mkdir]:~/work_space/go-filesystem/ aws --endpoint-url=http://localhost:4566 s3 ls s3://my-bucket/sss-dir/                                                                                                                                                                                                  [/Users/jinzhengpengye/work_space/go-filesystem]
+	//2024-05-31 10:53:44          0
+	if len(iter) == 1 && iter[0] == path {
+		return fs.NewListDirStream(nil), 0
+	}
+
 	hashset := make(map[string]struct{})
 	entry := make([]fuse.DirEntry, 0)
 	for i := range iter {
+		// NOTE: In the case of empty object, not display
+		if path == iter[i] {
+			continue
+		}
 		if r.IsRoot() {
 			s := strings.Split(iter[i], "/")
 			key := s[0]
@@ -202,33 +248,9 @@ func (r *Node) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 	return fs.NewListDirStream(entry), 0
 }
 
-func (r *Node) Create(ctx context.Context, name string, flags uint32, mode uint32, out *fuse.EntryOut) (node *fs.Inode, fh fs.FileHandle, fuseFlags uint32, errno syscall.Errno) {
-	key := r.createNewFullPath(name)
-
-	object, err := r.Client.CreateObject(ctx, key)
-	if err != nil {
-		return nil, nil, 0, syscall.EACCES
-	}
-	chile := r.NewInode(ctx, &fs.MemRegularFile{
-		Data: nil,
-		Attr: fuse.Attr{
-			Mode:  mode | FilePermission,
-			Mtime: uint64(object.LastModified),
-			Atime: uint64(object.LastModified),
-			Ctime: uint64(object.LastModified),
-			// NOTE: A file is created with the uchg flag by default. If so, you cannot remove that file without confirmation.
-			Flags_: 0,
-		},
-	}, fs.StableAttr{
-		Mode: syscall.S_IFREG,
-	})
-
-	return chile, nil, 0, 0
-
-}
-
 func (r *Node) Unlink(ctx context.Context, name string) syscall.Errno {
 	key := r.createNewFullPath(name)
+	fmt.Println(key)
 
 	err := r.Client.DeleteObject(ctx, key)
 	if err != nil {
