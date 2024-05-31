@@ -92,5 +92,6 @@ func main() {
 	if err != nil {
 		log.Fatal(errors.New(fmt.Sprintf("error occured when unmounting target directory. Manually unmount the target directory(%s).: %v", *mountDir, err)))
 	}
+
 	fmt.Println("finished unmount target directory completely")
 }
