@@ -100,11 +100,12 @@ Feel free to further adjust this to match your project's specifics and add any m
 - [x] fix code to run other linux command `touch`
 - [x] fix code to run other linux command `rm`
 - [x] fix code to run other linux command `mkdir`
-- [] fix code to run other linux command `rm -r`
+- [x] fix code to run other linux command `rm -r`
 - [ ] fix code to run other linux command `mv`
 - [ ] fix code to run other linux command `tree`
+- [ ] fix code to run other linux command `vi`
 - [ ] fix code to access not only localstack but also other cloud storage
 - [x] fix code to not display `override rwxrwxrwx root/wheel uchg for hoge.txt?` when removing files that is created on mounted filesystem
-- [ ] fix code to umount directory when kill go process
+- [x] fix code to umount directory when kill go process
 - [ ] not to access to s3 carelessly
 - [x] go cli
