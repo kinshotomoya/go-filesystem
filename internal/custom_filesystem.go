@@ -3,7 +3,6 @@ package internal
 import (
 	// standard library
 	"context"
-	"fmt"
 	"io"
 	"strings"
 	"syscall"
@@ -57,6 +56,10 @@ func (r *Node) createNewFullPath(name string) string {
 	return key
 }
 
+func isEmptyFile(filesUnderDirectory []string, directoryName string) bool {
+	return len(filesUnderDirectory) == 1 && filesUnderDirectory[0] == directoryName
+}
+
 func (r *Node) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
 	key := r.fullPath(name)
 	object, err := r.Client.CreateObject(ctx, key+"/")
@@ -106,9 +109,8 @@ func (r *Node) Rmdir(ctx context.Context, name string) syscall.Errno {
 		return syscall.ENOENT
 	}
 
-	// TODO: １つの関数にまとめる
 	directory := key + "/"
-	if len(list) == 1 && list[0] == directory {
+	if isEmptyFile(list, directory) {
 		err = r.Client.DeleteObject(ctx, directory)
 		if err != nil {
 			return syscall.ENOENT
@@ -185,14 +187,13 @@ func (r *Node) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 		return nil, syscall.ENOENT
 	}
 
-	// TODO: １つの関数にまとめる
 	// NOTE:
 	// mkdirで作成したdirectoryで、中身が何も入っていない場合は
 	// s3は空のオブジェクトを作成して、ディレクトリをエミュレートしている
 	// この空のオブジェクトがあった場合にはディレクトリ自体が空であると表現する
 	//[git][* feature/mkdir]:~/work_space/go-filesystem/ aws --endpoint-url=http://localhost:4566 s3 ls s3://my-bucket/sss-dir/                                                                                                                                                                                                  [/Users/jinzhengpengye/work_space/go-filesystem]
 	//2024-05-31 10:53:44          0
-	if len(iter) == 1 && iter[0] == path {
+	if isEmptyFile(iter, path) {
 		return fs.NewListDirStream(nil), 0
 	}
 
@@ -250,7 +251,6 @@ func (r *Node) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 
 func (r *Node) Unlink(ctx context.Context, name string) syscall.Errno {
 	key := r.createNewFullPath(name)
-	fmt.Println(key)
 
 	err := r.Client.DeleteObject(ctx, key)
 	if err != nil {
