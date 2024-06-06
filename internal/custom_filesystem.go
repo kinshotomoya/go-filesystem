@@ -3,6 +3,7 @@ package internal
 import (
 	// standard library
 	"context"
+	"fmt"
 	"io"
 	"strings"
 	"syscall"
@@ -121,6 +122,7 @@ func (r *Node) Rmdir(ctx context.Context, name string) syscall.Errno {
 }
 
 func (r *Node) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
+	//fmt.Println("Getattr: ", r.name)
 	if r.IsDirectory {
 		out.Mode = syscall.S_IFDIR | FilePermission
 		if r.DirectoryInfo != nil {
@@ -136,6 +138,9 @@ func (r *Node) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut)
 }
 
 func (r *Node) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+	fmt.Printf("Lookup: %s, %s \n", name, r.name)
+	// TODO: 毎回r(Node)にchildを追加するためにs3にアクセスしているが、一回追加するだけでtreeを構築できるのでそのように修正する
+	fmt.Println(r.Children())
 	key := r.fullPath(name)
 	isDirectory, err := r.Client.IsDirectory(ctx, key)
 	if err != nil {
@@ -177,6 +182,7 @@ func (r *Node) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs
 }
 
 func (r *Node) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
+	fmt.Println("Readdir: ", r.name)
 	path := r.Path(r.Root())
 	if !r.IsRoot() {
 		path = path + "/"
