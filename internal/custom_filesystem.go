@@ -3,7 +3,6 @@ package internal
 import (
 	// standard library
 	"context"
-	"fmt"
 	"io"
 	"log/slog"
 	"strings"
@@ -32,8 +31,10 @@ var _ = (fs.NodeUnlinker)((*Node)(nil))
 var _ = (fs.NodeRmdirer)((*Node)(nil))
 var _ = (fs.NodeMkdirer)((*Node)(nil))
 
-// TODO: fix to proper permission
-const FilePermission = 0777
+const FilePermission = 0644
+const DirectoryPermission = 0777
+
+var notFoundFileHashSet = make(map[string]struct{})
 
 // NOTE: fileの場合は、MemRegularFileを利用。directoryの場合はNodeを利用
 func (r *Node) fullPath(name string) string {
@@ -123,9 +124,8 @@ func (r *Node) Rmdir(ctx context.Context, name string) syscall.Errno {
 }
 
 func (r *Node) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
-	//fmt.Println("Getattr: ", r.name)
 	if r.IsDirectory {
-		out.Mode = syscall.S_IFDIR | FilePermission
+		out.Mode = syscall.S_IFDIR | DirectoryPermission
 		if r.DirectoryInfo != nil {
 			out.Size = uint64(r.DirectoryInfo.SumContentByte)
 			out.Mtime = uint64(r.DirectoryInfo.LastModified)
@@ -140,8 +140,11 @@ func (r *Node) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut)
 
 // NOTE: 対象ディレクトリの中身を探索する、一回処理がきてinodeを返しているとそのnameのlookupはそれ以上呼ばれない
 func (r *Node) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
-	fmt.Printf("Lookup: name: %s, node name: %s, children: %s \n", name, r.name, r.Children())
 	key := r.fullPath(name)
+	_, exists := notFoundFileHashSet[key]
+	if exists {
+		return nil, syscall.ENOENT
+	}
 	isDirectory, err := r.Client.IsDirectory(ctx, key)
 	if err != nil {
 		return nil, syscall.ENOENT
@@ -156,6 +159,7 @@ func (r *Node) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs
 	} else {
 		object, err := r.Client.GetObject(ctx, key)
 		if err != nil {
+			notFoundFileHashSet[key] = struct{}{}
 			return nil, syscall.ENOENT
 		}
 
@@ -181,10 +185,7 @@ func (r *Node) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs
 	}
 }
 
-// TOOD:
-// .gitとか@loaderとかが無駄なので、キャッシュか何かで処理しないように修正する
 func (r *Node) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
-	fmt.Printf("Readdir: node name: %s, children: %s \n", r.name, r.Children())
 	if r.isEmptyDirectory {
 		return fs.NewListDirStream(nil), 0
 	}
