@@ -138,9 +138,9 @@ func (r *Node) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut)
 	return 0
 }
 
+// NOTE: 対象ディレクトリの中身を探索する、一回処理がきてinodeを返しているとそのnameのlookupはそれ以上呼ばれない
 func (r *Node) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
-	fmt.Printf("Lookup: %s, %s \n", name, r.name)
-	// TODO: 毎回r(Node)にchildを追加するためにs3にアクセスしているが、一回追加するだけでtreeを構築できるのでそのように修正する
+	fmt.Printf("Lookup: name: %s, node name: %s, children: %s \n", name, r.name, r.Children())
 	key := r.fullPath(name)
 	isDirectory, err := r.Client.IsDirectory(ctx, key)
 	if err != nil {
@@ -181,7 +181,10 @@ func (r *Node) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs
 	}
 }
 
+// TOOD:
+// .gitとか@loaderとかが無駄なので、キャッシュか何かで処理しないように修正する
 func (r *Node) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
+	fmt.Printf("Readdir: node name: %s, children: %s \n", r.name, r.Children())
 	if r.isEmptyDirectory {
 		return fs.NewListDirStream(nil), 0
 	}
