@@ -4,6 +4,7 @@ import (
 	// standard library
 	"context"
 	"io"
+	"log/slog"
 	"strings"
 	"syscall"
 
@@ -15,10 +16,11 @@ import (
 type Node struct {
 	fs.Inode
 
-	Client        ClientBase
-	name          string // the name of directory or file
-	IsDirectory   bool
-	DirectoryInfo *DirectoryInfo
+	Client           ClientBase
+	name             string // the name of directory or file
+	IsDirectory      bool
+	DirectoryInfo    *DirectoryInfo
+	isEmptyDirectory bool
 }
 
 var _ = (fs.NodeGetattrer)((*Node)(nil))
@@ -29,11 +31,12 @@ var _ = (fs.NodeUnlinker)((*Node)(nil))
 var _ = (fs.NodeRmdirer)((*Node)(nil))
 var _ = (fs.NodeMkdirer)((*Node)(nil))
 
-// TODO: fix to proper permission
-const FilePermission = 0777
+const FilePermission = 0644
+const DirectoryPermission = 0777
+
+var notFoundFileHashSet = make(map[string]struct{})
 
 // NOTE: fileの場合は、MemRegularFileを利用。directoryの場合はNodeを利用
-
 func (r *Node) fullPath(name string) string {
 	path := r.Path(r.Root())
 	var key string
@@ -122,7 +125,7 @@ func (r *Node) Rmdir(ctx context.Context, name string) syscall.Errno {
 
 func (r *Node) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
 	if r.IsDirectory {
-		out.Mode = syscall.S_IFDIR | FilePermission
+		out.Mode = syscall.S_IFDIR | DirectoryPermission
 		if r.DirectoryInfo != nil {
 			out.Size = uint64(r.DirectoryInfo.SumContentByte)
 			out.Mtime = uint64(r.DirectoryInfo.LastModified)
@@ -135,8 +138,13 @@ func (r *Node) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut)
 	return 0
 }
 
+// NOTE: 対象ディレクトリの中身を探索する、一回処理がきてinodeを返しているとそのnameのlookupはそれ以上呼ばれない
 func (r *Node) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
 	key := r.fullPath(name)
+	_, exists := notFoundFileHashSet[key]
+	if exists {
+		return nil, syscall.ENOENT
+	}
 	isDirectory, err := r.Client.IsDirectory(ctx, key)
 	if err != nil {
 		return nil, syscall.ENOENT
@@ -151,6 +159,7 @@ func (r *Node) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs
 	} else {
 		object, err := r.Client.GetObject(ctx, key)
 		if err != nil {
+			notFoundFileHashSet[key] = struct{}{}
 			return nil, syscall.ENOENT
 		}
 
@@ -177,76 +186,97 @@ func (r *Node) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs
 }
 
 func (r *Node) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
-	path := r.Path(r.Root())
-	if !r.IsRoot() {
-		path = path + "/"
-	}
-
-	iter, err := r.Client.List(ctx, path)
-	if err != nil {
-		return nil, syscall.ENOENT
-	}
-
-	// NOTE:
-	// mkdirで作成したdirectoryで、中身が何も入っていない場合は
-	// s3は空のオブジェクトを作成して、ディレクトリをエミュレートしている
-	// この空のオブジェクトがあった場合にはディレクトリ自体が空であると表現する
-	//[git][* feature/mkdir]:~/work_space/go-filesystem/ aws --endpoint-url=http://localhost:4566 s3 ls s3://my-bucket/sss-dir/                                                                                                                                                                                                  [/Users/jinzhengpengye/work_space/go-filesystem]
-	//2024-05-31 10:53:44          0
-	if isEmptyFile(iter, path) {
+	if r.isEmptyDirectory {
 		return fs.NewListDirStream(nil), 0
 	}
-
-	hashset := make(map[string]struct{})
-	entry := make([]fuse.DirEntry, 0)
-	for i := range iter {
-		// NOTE: In the case of empty object, not display
-		if path == iter[i] {
-			continue
+	childrenCount := len(r.Children())
+	// すでにバックエンドのファイルシステムからnodeを取得している場合
+	if childrenCount > 0 {
+		entries := make([]fuse.DirEntry, childrenCount)
+		var i int
+		for k, _ := range r.Children() {
+			entries[i] = fuse.DirEntry{
+				Mode: syscall.S_IFREG,
+				Name: k,
+			}
+			i += 1
 		}
-		if r.IsRoot() {
-			s := strings.Split(iter[i], "/")
-			key := s[0]
-			if len(s) == 1 {
-				// file
-				entry = append(entry, fuse.DirEntry{
-					Mode: syscall.S_IFREG,
-					Name: key,
-				})
-			} else {
-				// directory
-				_, exist := hashset[key]
-				if !exist {
-					hashset[key] = struct{}{}
+		return fs.NewListDirStream(entries), 0
+	} else {
+		path := r.Path(r.Root())
+		if !r.IsRoot() {
+			path = path + "/"
+		}
+
+		iter, err := r.Client.List(ctx, path)
+		if err != nil {
+			slog.Error(err.Error())
+			return nil, syscall.ENOENT
+		}
+
+		// NOTE:
+		// mkdirで作成したdirectoryで、中身が何も入っていない場合は
+		// s3は空のオブジェクトを作成して、ディレクトリをエミュレートしている
+		// この空のオブジェクトがあった場合にはディレクトリ自体が空であると表現する
+		//[git][* feature/mkdir]:~/work_space/go-filesystem/ aws --endpoint-url=http://localhost:4566 s3 ls s3://my-bucket/sss-dir/                                                                                                                                                                                                  [/Users/jinzhengpengye/work_space/go-filesystem]
+		//2024-05-31 10:53:44          0
+		if isEmptyFile(iter, path) {
+			// nilを返すと、5回ほどReaddirが呼ばれるので、isEmptyDirectoryにしてReaddirの最上段でreturnする
+			r.isEmptyDirectory = true
+			return fs.NewListDirStream(nil), 0
+		}
+
+		hashset := make(map[string]struct{})
+		var entry []fuse.DirEntry
+		for i := range iter {
+			// NOTE: In the case of empty object, not display
+			if path == iter[i] {
+				continue
+			}
+			if r.IsRoot() {
+				s := strings.Split(iter[i], "/")
+				key := s[0]
+				if len(s) == 1 {
+					// file
 					entry = append(entry, fuse.DirEntry{
-						Mode: syscall.S_IFDIR,
+						Mode: syscall.S_IFREG,
 						Name: key,
 					})
+				} else {
+					// directory
+					_, exist := hashset[key]
+					if !exist {
+						hashset[key] = struct{}{}
+						entry = append(entry, fuse.DirEntry{
+							Mode: syscall.S_IFDIR,
+							Name: key,
+						})
+					}
 				}
-			}
-		} else {
-			fullPath := iter[i]
-			trimedPath := strings.TrimPrefix(fullPath, path)
-			splitedPath := strings.Split(trimedPath, "/")
-			if len(splitedPath) == 1 {
-				// file
-				entry = append(entry, fuse.DirEntry{
-					Mode: syscall.S_IFREG,
-					Name: splitedPath[0],
-				})
 			} else {
-				// directory
-				entry = append(entry, fuse.DirEntry{
-					Mode: syscall.S_IFDIR,
-					Name: splitedPath[0],
-				})
+				fullPath := iter[i]
+				trimedPath := strings.TrimPrefix(fullPath, path)
+				splitedPath := strings.Split(trimedPath, "/")
+				if len(splitedPath) == 1 {
+					// file
+					entry = append(entry, fuse.DirEntry{
+						Mode: syscall.S_IFREG,
+						Name: splitedPath[0],
+					})
+				} else {
+					// directory
+					entry = append(entry, fuse.DirEntry{
+						Mode: syscall.S_IFDIR,
+						Name: splitedPath[0],
+					})
+				}
+
 			}
 
 		}
 
+		return fs.NewListDirStream(entry), 0
 	}
-
-	return fs.NewListDirStream(entry), 0
 }
 
 func (r *Node) Unlink(ctx context.Context, name string) syscall.Errno {
