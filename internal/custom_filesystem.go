@@ -17,7 +17,7 @@ type Node struct {
 	fs.Inode
 
 	Client           ClientBase
-	name             string // the name of directory or file
+	Name             string // the Name of directory or file
 	IsDirectory      bool
 	DirectoryInfo    *DirectoryInfo
 	isEmptyDirectory bool
@@ -30,10 +30,13 @@ var _ = (fs.NodeCreater)((*Node)(nil))
 var _ = (fs.NodeUnlinker)((*Node)(nil))
 var _ = (fs.NodeRmdirer)((*Node)(nil))
 var _ = (fs.NodeMkdirer)((*Node)(nil))
+var _ = (fs.NodeRenamer)((*Node)(nil))
 
 const FilePermission = 0644
 const DirectoryPermission = 0777
+const notFoundFileCount = 10
 
+var notFoundFileCountMap = make(map[string]int)
 var notFoundFileHashSet = make(map[string]struct{})
 
 // NOTE: fileの場合は、MemRegularFileを利用。directoryの場合はNodeを利用
@@ -73,7 +76,7 @@ func (r *Node) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.En
 	dirInfo := DirectoryInfo{
 		LastModified: object.LastModified,
 	}
-	newNode := r.NewInode(ctx, &Node{name: name, Client: r.Client, IsDirectory: true, DirectoryInfo: &dirInfo}, fs.StableAttr{Mode: syscall.S_IFDIR})
+	newNode := r.NewInode(ctx, &Node{Name: name, Client: r.Client, IsDirectory: true, DirectoryInfo: &dirInfo}, fs.StableAttr{Mode: syscall.S_IFDIR})
 
 	return newNode, 0
 }
@@ -104,7 +107,9 @@ func (r *Node) Create(ctx context.Context, name string, flags uint32, mode uint3
 }
 
 func (r *Node) Rmdir(ctx context.Context, name string) syscall.Errno {
-	// このメソッドが呼ばれる前に、対象ディレクトリ配下のオブジェクトのunlinkが呼ばれてすでに削除されている
+	// NOTE: このメソッドが呼ばれる前に、対象ディレクトリ配下のオブジェクトのunlinkが呼ばれてすでに削除されている
+	//  なので、ここではディレクトリ自体を削除する
+	// treeはunlinkで削除されているので、ここでの処理は不要
 	key := r.fullPath(name)
 	list, err := r.Client.List(ctx, key)
 
@@ -138,50 +143,80 @@ func (r *Node) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut)
 	return 0
 }
 
-// NOTE: 対象ディレクトリの中身を探索する、一回処理がきてinodeを返しているとそのnameのlookupはそれ以上呼ばれない
-func (r *Node) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
-	key := r.fullPath(name)
-	_, exists := notFoundFileHashSet[key]
+func isNotFoundFile(name string) bool {
+	_, exists := notFoundFileHashSet[name]
 	if exists {
+		return true
+	}
+	if notFoundFileCountMap[name] >= notFoundFileCount {
+		notFoundFileHashSet[name] = struct{}{}
+		return true
+	}
+	return false
+}
+
+func resetNotFoundFileCount(name string) {
+	notFoundFileCountMap[name] = 0
+}
+
+// NOTE: 対象ディレクトリの中身を探索する、一回処理がきてinodeを返しているとそのnameのlookupはそれ以上呼ばれない
+// ただ、touchやrmなど対象のファイル作成。削除が行われるとその都度このメソッドが呼ばれている
+
+// NOTE: renameした際にtreeにnodeを追加しても、その後のlookupを呼ばれた時点でchildrenから消えている。
+// go-fuseの仕様的にlookupしないとr.Children()には存在しないのか
+// なので、lookupが呼ばれた時点でtreeになくてlocalstackにある場合は、nodeを追加する
+func (r *Node) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+	isNotFoundFile := isNotFoundFile(name)
+	if isNotFoundFile {
 		return nil, syscall.ENOENT
 	}
-	isDirectory, err := r.Client.IsDirectory(ctx, key)
-	if err != nil {
-		return nil, syscall.ENOENT
-	}
-	if isDirectory {
-		info, err := r.Client.GetDirectoryInfo(ctx, key)
-		if err != nil {
-			return nil, syscall.ENOENT
-		}
-		chile := r.NewInode(ctx, &Node{name: name, Client: r.Client, IsDirectory: true, DirectoryInfo: info}, fs.StableAttr{Mode: syscall.S_IFDIR})
-		return chile, 0
+
+	// NOTE: すでにtree上に存在している場合は、そのinodeを返す
+	c := r.GetChild(name)
+	if c != nil {
+		//resetNotFoundFileCount(Name)
+		return c, 0
 	} else {
-		object, err := r.Client.GetObject(ctx, key)
-		if err != nil {
-			notFoundFileHashSet[key] = struct{}{}
-			return nil, syscall.ENOENT
-		}
-
-		body, err := io.ReadAll(object.Body)
+		key := r.fullPath(name)
+		isDirectory, err := r.Client.IsDirectory(ctx, key)
 		if err != nil {
 			return nil, syscall.ENOENT
 		}
+		if isDirectory {
+			info, err := r.Client.GetDirectoryInfo(ctx, key)
+			if err != nil {
+				return nil, syscall.ENOENT
+			}
+			chile := r.NewInode(ctx, &Node{Name: name, Client: r.Client, IsDirectory: true, DirectoryInfo: info}, fs.StableAttr{Mode: syscall.S_IFDIR})
+			return chile, 0
+		} else {
+			object, err := r.Client.GetObject(ctx, key)
+			if err != nil {
+				// NOTE: 10回以上not foundが続いた場合は、そのファイルが存在しないと判断する
+				notFoundFileCountMap[name] += 1
+				return nil, syscall.ENOENT
+			}
 
-		chile := r.NewInode(ctx, &fs.MemRegularFile{
-			Data: body,
-			Attr: fuse.Attr{
-				// In the case of file, this attributes is shown when executing ls command.
-				// However, the size attribute seems to be calculated automatically in the go-fuse.
-				Mode:  syscall.S_IFREG | FilePermission,
-				Mtime: uint64(object.LastModified),
-				Atime: uint64(object.LastModified),
-				Ctime: uint64(object.LastModified),
-			},
-		}, fs.StableAttr{
-			Mode: syscall.S_IFREG,
-		})
-		return chile, 0
+			body, err := io.ReadAll(object.Body)
+			if err != nil {
+				return nil, syscall.ENOENT
+			}
+
+			child := r.NewInode(ctx, &fs.MemRegularFile{
+				Data: body,
+				Attr: fuse.Attr{
+					// In the case of file, this attributes is shown when executing ls command.
+					// However, the size attribute seems to be calculated automatically in the go-fuse.
+					Mode:  syscall.S_IFREG | FilePermission,
+					Mtime: uint64(object.LastModified),
+					Atime: uint64(object.LastModified),
+					Ctime: uint64(object.LastModified),
+				},
+			}, fs.StableAttr{
+				Mode: syscall.S_IFREG,
+			})
+			return child, 0
+		}
 	}
 }
 
@@ -287,5 +322,35 @@ func (r *Node) Unlink(ctx context.Context, name string) syscall.Errno {
 		return syscall.ENOENT
 	}
 
+	success, _ := r.RmChild(name)
+	if !success {
+		return syscall.ENOENT
+	}
 	return 0
+}
+
+func (r *Node) Rename(ctx context.Context, name string, newParent fs.InodeEmbedder, newName string, flags uint32) syscall.Errno {
+	// TODO: ディレクトリを移動しないmvは完了したので、ディレクトリをまたいだmvを次回実装
+	n := newParent.(*Node)
+	isMoved := r.MvChild(name, &n.Inode, newName, true)
+	if !isMoved {
+		return syscall.ENOENT
+	}
+
+	// NOTE: renameした後に、nameとnewNameのinodeに対してlookupが走るので
+	//  newNameの方をlocalstackに新規で作成し、nameの方を削除する
+	// nameを削除
+	key := r.createNewFullPath(name)
+	err := r.Client.DeleteObject(ctx, key)
+	if err != nil {
+		return syscall.ENOENT
+	}
+
+	// newNameのobjectを作成
+	key = r.createNewFullPath(newName)
+	_, errs := r.Client.CreateObject(ctx, key)
+	if errs != nil {
+		return syscall.ENOENT
+	}
+	return fs.OK
 }
