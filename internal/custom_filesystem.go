@@ -148,8 +148,7 @@ func isNotFoundFile(name string) bool {
 	if exists {
 		return true
 	}
-	notFoundFileCountMap[name] += 1
-	if notFoundFileCountMap[name] > notFoundFileCount {
+	if notFoundFileCountMap[name] >= notFoundFileCount {
 		notFoundFileHashSet[name] = struct{}{}
 		return true
 	}
@@ -162,16 +161,16 @@ func resetNotFoundFileCount(name string) {
 
 // NOTE: 対象ディレクトリの中身を探索する、一回処理がきてinodeを返しているとそのnameのlookupはそれ以上呼ばれない
 // ただ、touchやrmなど対象のファイル作成。削除が行われるとその都度このメソッドが呼ばれている
+
+// NOTE: renameした際にtreeにnodeを追加しても、その後のlookupを呼ばれた時点でchildrenから消えている。
+// go-fuseの仕様的にlookupしないとr.Children()には存在しないのか
+// なので、lookupが呼ばれた時点でtreeになくてlocalstackにある場合は、nodeを追加する
 func (r *Node) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+	isNotFoundFile := isNotFoundFile(name)
+	if isNotFoundFile {
+		return nil, syscall.ENOENT
+	}
 
-	// TODO: renameした際にtreeにnodeを追加しても、その後のlookupを呼ばれた時点でchildrenから消えている。。なぜかわからん
-
-	// TODO: ↓lookupしても存在しないファイルはキャッシュに入れてすぐにnot foundを返すようにする
-	//isNotFoundFile := isNotFoundFile(Name)
-	//if isNotFoundFile {
-	//	return nil, syscall.ENOENT
-	//}
-	//fmt.Println("GetChild: ", Name, r.GetChild(Name), r.Name, notFoundFileCountMap)
 	// NOTE: すでにtree上に存在している場合は、そのinodeを返す
 	c := r.GetChild(name)
 	if c != nil {
@@ -193,6 +192,8 @@ func (r *Node) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs
 		} else {
 			object, err := r.Client.GetObject(ctx, key)
 			if err != nil {
+				// NOTE: 10回以上not foundが続いた場合は、そのファイルが存在しないと判断する
+				notFoundFileCountMap[name] += 1
 				return nil, syscall.ENOENT
 			}
 
